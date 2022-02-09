@@ -1,67 +1,77 @@
 import torch
 import torch.nn as nn
-import torchvision.transforms.functional as tf
+import torchvision
+from torch.nn import functional as F
 
-
-# first stage of the network
-class DoubleConv(nn.Module):
-    def __init__(self, in_channels,out_channels):
-        super(DoubleConv,self).__init__()
-
-        self.conv = nn.Sequential(nn.Conv3d(in_channels, out_channels, 3, 1, 1, 1, bias=False),
-                                  nn.BatchNorm3d(out_channels),
-                                  nn.ReLU(inplace=True),
-                                  nn.Conv3d(in_channels, out_channels, 3, 1, 1, 1, bias=False),
-                                  nn.BatchNorm3d(out_channels),
-                                  nn.ReLU(inplace=True),
-        
-        )
+# each convolutional block in the encoding stage
+class Block(nn.Module):
+    def __init__(self, in_channels, out_channels):
+        super().__init__()
+        self.conv1 = nn.Conv2d(in_channels, out_channels, 3) # kernel size here is 3, no padding is used
+        self.relu = nn.ReLU()
+        self.conv2 = nn.Conv2d(out_channels, out_channels, 3)
     
     def forward(self, x):
-        return self.conv(x)
+        return self.relu(self.conv2(self.relu(self.conv1(x))))
 
 
-class UNet(nn.Module):
-    def __init__(self,in_channels=3,out_channels=1,features=[64,128,256,512]):
-        super(UNet, self).__init__()
-        self.ups = nn.ModuleList()
-        self.downs = nn.ModuleList()
-        self.pool = nn.MaxPool3d(kernel_size=2,stride=2)
+# the encoding stage, this is referred to as the contractive path
+# each c-block is followed by a max pooling operation (between two block operations)
 
-        # Down part
-        for feature in features:
-            self.downs.append(DoubleConv(in_channels,feature))
-            in_channels = feature 
-        
-
-        # Up part
-        for feature in reversed(features):
-            self.ups.append(nn.ConvTranspose3d(feature * 2, feature, kernel_size=2,stride=2))
-            self.ups.append(DoubleConv(feature*2,feature))
-        
-
-        # define bottleneck layer
-        self.bottleneck = DoubleConv(features[-1],features[-1]*2)
-        self.final_conv = nn.Conv3d(features[0], out_channels, kernel_size=1)
+class Encoder(nn.Module):
+    def __init__(self, chs=(3,64,128,256,512,1024)):        # we define the channel order, so we start from 3 channels and go down to 1024 channels (the very bottom level)
+        super().__init__()                                  # this should be different for the lesion segmentation
+        self.enc_blocks = nn.ModuleList([Block(chs[i], chs[i+1]) for i in range(len(chs)-1)]) # we essentially loop through each channel and apply the feature in/outs
+        self.pool = nn.MaxPool2d(2) # define a 2x2 pooling filter, can be 2x2x2 for the 3d case
     
-
     def forward(self,x):
-        skip_connections = [] # store all the skip stuff
-
-        for down in self.downs:
-            x = down(x)
-            skip_connections.append(x)
+        features = []
+        for block in self.enc_blocks:       # for each block in the list of block operations
+            x = block(x)                    # calculate the output given the input, x
+            features.append(x)               # append the output features into the array (of each conv block), this is so that we can concatenate with the decoding path
             x = self.pool(x)
+        return features
 
-        # the bottom bit
+# the decoder stage is essentially the expansive path of the architecture
+# we essentially do "up-convolution" or "transposed convolution" which halves the number of feature channels and concatenates with the correspondigly cropped feature map
+# from the contracting path
+# we also have to do cropping which is necessary due to the loss of border pixels in every convolution
 
-        x = self.bottleneck(x)
-        skip_connections = skip_connections[::-1]
+class Decoder(nn.Module):
+    def __init__(self, chs=(1024,512,256,128,64)):  # we go from a 1024 channel image back up to a 64 channel (eventually becomes 1 channel at the very end)
+        super().__init__()
+        self.chs = chs
+        self.upconvs = nn.ModuleList([nn.ConvTranspose2d(chs[i], chs[i+1], 2, 2) for i in range(len(chs)-1)])   # list of t-convolutions going upwards
+        self.dec_blocks = nn.ModuleList([Block(chs[i], chs[i+1]) for i in range(len(chs)-1)]) # we do the same convolution operations as before
+        # this contains the decoder blocks that perform two convs and relu operation
+    
+    def crop(self,enc_ftrs, x):
+        _,_, H, W = x.shape
+        enc_ftrs = torchvision.transforms.CenterCrop([H,W])(enc_ftrs)
+    
+    def forward(self,x,encoder_features):
+        for i in range(len(self.chs)-1):
+            x = self.upconvs[i](x)
+            enc_ftrs = self.crop(encoder_features[i], x) # crop the encoder features, preparing them for concatenation
+            x = torch.cat([x,enc_ftrs], dim=1) # concatenate the feature from the encoder path with the output of the decoder block
+            x = self.dec_blocks[i](x)          # x is the output, we input into the blocks for the decoder stage
 
-        for idx in range(0, len(self.ups),2):
-            x = self.ups[idx](x)
-            skip_connections = skip_connections[idx//2]
-            concat_skip = torch.cat((skip_connections, x), dim=1)
-            x = self.ups[idx+1](concat_skip)
 
-        return self.final_conv(x)
+# Now we just need to link all this up to form the overall u-net
+class UNet(nn.Module):
+    def __init__(self,enc_chs=(3,64,128,256,512,1024), dec_chs=(1024, 512, 256, 128, 64), num_class=1, retain_dim=False, out_sze=(572,572)):
+        super().__init__()
+        self.encoder = Encoder(enc_chs)
+        self.decoder = Decoder(dec_chs)
+        self.head = nn.Conv2d(dec_chs[-1], num_class, 1) # the part at the very end, to produce the final segmented image
+        self.retain_dim = retain_dim
+        self.out_size = out_sze
+    
+    def forward(self,x):
+        enc_ftrs = self.encoder(x)
+        out = self.decoder(enc_ftrs[::-1][0], enc_ftrs[::-1][1:])
+        out = self.head(out)
+        if self.retain_dim:
+            out = F.interpolate(out,self.out_size)     # make the output size the same as the input image size
+        
+        return out 
