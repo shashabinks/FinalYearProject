@@ -16,12 +16,33 @@ class ISLES2018_loader(Dataset):
     def __init__(self, folder, modalities=None):
         super().__init__()
         self.modalities = modalities
-        self.samples = []
-        self.cases = {}
+        #self.samples = []
+        #self.cases = {}
+
+        self.data = {}
+
+        for modality in modalities:
+            self.data.update({modality : []})
+
         
         for case_name in os.listdir(folder):
             case_path = os.path.join(folder, case_name)
-            case = {}
+            
+
+            
+            for file_path in os.listdir(case_path):
+                modality = re.search(r'SMIR.Brain.XX.O.(\w+).\d+',file_path).group(1)
+                
+                if modality != 'CT_4DPWI': 
+                    nii_path_name = os.path.join(case_path,file_path,file_path+'.nii')
+                    img = nib.load(nii_path_name)
+                    self.data[modality].append(img)
+
+        
+
+
+
+            """
             for file_path in os.listdir(case_path):
                 modality = re.search(r'SMIR.Brain.XX.O.(\w+).\d+',file_path).group(1)
                 if modality != 'CT_4DPWI': 
@@ -30,20 +51,20 @@ class ISLES2018_loader(Dataset):
                     case[modality] = img
             
             self.cases = case
-        
+            """
         
     
     def viewData(self):
-        print(self.cases)
+        print(self.data)
 
     def view_slices(self):
-        for modality in self.modalities:
-            img = self.cases[modality].get_fdata()
-            section = img[:,:,14]
-            plt.imshow(section,cmap='gray', alpha=1)
+        for image in self.data["CT_CBV"]:
+            img = image.get_fdata()
+            print(img.shape)
+            #plt.imshow(section,cmap='gray', alpha=1)
 
-            plt.colorbar(label='intensity')
-            plt.show()
+            #plt.colorbar(label='intensity')
+            #plt.show()
             
 
 
@@ -55,6 +76,6 @@ class ISLES2018_loader(Dataset):
 directory = "ISLES/TRAINING"
 modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
 dataset = ISLES2018_loader(directory, modalities)
-dataset.viewData()
+#dataset.viewData()
 dataset.view_slices()
 
