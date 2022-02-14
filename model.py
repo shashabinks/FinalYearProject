@@ -33,8 +33,8 @@ class Encoder(nn.Module):
         return features
 
 # the decoder stage is essentially the expansive path of the architecture
-# we essentially do "up-convolution" or "transposed convolution" which halves the number of feature channels and concatenates with the correspondigly cropped feature map
-# from the contracting path
+# we essentially do "up-convolution" or "transposed convolution" which halves the number of feature channels and concatenates with the corresponding cropped feature map
+# from the contracting path (encoding stage)
 # we also have to do cropping which is necessary due to the loss of border pixels in every convolution
 
 class Decoder(nn.Module):
@@ -61,11 +61,11 @@ class Decoder(nn.Module):
 class UNet(nn.Module):
     def __init__(self,enc_chs=(3,64,128,256,512,1024), dec_chs=(1024, 512, 256, 128, 64), num_class=1, retain_dim=False, out_sze=(572,572)):
         super().__init__()
-        self.encoder = Encoder(enc_chs)
-        self.decoder = Decoder(dec_chs)
+        self.encoder = Encoder(enc_chs) # carry out the encoding
+        self.decoder = Decoder(dec_chs) # carry out the decoding
         self.head = nn.Conv2d(dec_chs[-1], num_class, 1) # the part at the very end, to produce the final segmented image
-        self.retain_dim = retain_dim
-        self.out_size = out_sze
+        self.retain_dim = retain_dim # boolean to decide whether we want to keep the size of the image as it was before
+        self.out_size = out_sze # define the size of the output, this may be the same dimensionality as the input data if retaining
     
     def forward(self,x):
         enc_ftrs = self.encoder(x)
