@@ -12,7 +12,7 @@ class Block(nn.Module):
         self.conv2 = nn.Conv2d(out_channels, out_channels, 3)
     
     def forward(self, x):
-        return self.relu(self.conv2(self.relu(self.conv1(x))))
+        return self.conv2(self.relu(self.conv1(x)))
 
 
 # the encoding stage, this is referred to as the contractive path
@@ -48,6 +48,7 @@ class Decoder(nn.Module):
     def crop(self,enc_ftrs, x):
         _,_, H, W = x.shape
         enc_ftrs = torchvision.transforms.CenterCrop([H,W])(enc_ftrs)
+        return enc_ftrs
     
     def forward(self,x,encoder_features):
         for i in range(len(self.chs)-1):
@@ -55,6 +56,7 @@ class Decoder(nn.Module):
             enc_ftrs = self.crop(encoder_features[i], x) # crop the encoder features, preparing them for concatenation
             x = torch.cat([x,enc_ftrs], dim=1) # concatenate the feature from the encoder path with the output of the decoder block
             x = self.dec_blocks[i](x)          # x is the output, we input into the blocks for the decoder stage
+        return x
 
 
 # Now we just need to link all this up to form the overall u-net
@@ -75,3 +77,9 @@ class UNet(nn.Module):
             out = F.interpolate(out,self.out_size)     # make the output size the same as the input image size
         
         return out 
+
+
+if __name__=="__main__":
+    unet = UNet()
+    x    = torch.randn(1, 3, 572, 572)
+    print(unet(x).shape)
