@@ -28,7 +28,7 @@ class ISLES2018_loader(Dataset):
 
         for case_name in os.listdir(file_dir):
             case_path = os.path.join(file_dir, case_name)
-            case = {}
+            case = {} # dict which will store all the images for each modality, this is later used to iterate through all the slices etc
 
             for path in os.listdir(case_path):
                 modality = re.search(r'SMIR.Brain.XX.O.(\w+).\d+',path).group(1)
@@ -42,6 +42,9 @@ class ISLES2018_loader(Dataset):
                 arr = []                                # create array for each image slice
                 for modality in modalities:             # loop through the modalities
                     if modality != 'OT':                # ignore the ground truth
+
+                        # add image augmentations here 
+
                         image_slice = torch.from_numpy(case[modality].get_fdata()[:,:,i]) # image slice
                         arr.append(image_slice.float().unsqueeze(0)) # add the slice to the array
 
@@ -53,9 +56,9 @@ class ISLES2018_loader(Dataset):
 
                 ground_truth_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]) # slice of the corresponding ground_truths
 
-                plt.imshow(ground_truth_slice[:,:],cmap='gray')
-                plt.show()                
-                self.samples.append((combined, ground_truth_slice.float().unsqueeze(0)))  # append tuples of combined slices and ground truth masks
+                #plt.imshow(ground_truth_slice[:,:],cmap='gray')
+                #plt.show()                
+                self.samples.append((combined, ground_truth_slice.float().unsqueeze(0)))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
         
             
         
@@ -115,7 +118,7 @@ class ISLES2018_loader(Dataset):
 directory = "ISLES/TRAINING"
 modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
 dataset = ISLES2018_loader(directory, modalities)
-print(dataset.__len__())
+#print(dataset.__len__())
 
 
 

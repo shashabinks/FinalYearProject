@@ -3,7 +3,7 @@ import torch.nn as nn
 import torchvision
 from torch.nn import functional as F
 from model import UNet
-from dataloader import ISLES2018_loader
+from datasetloader import ISLES2018_loader
 import nibabel as nib
 import matplotlib.pyplot as plt
 import os
@@ -35,12 +35,12 @@ modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
 dataset = ISLES2018_loader(directory, modalities)
 
 # split dataset into train/val for given modality
-tr, gt = dataset.getData('CT_CBV')
+print(len(dataset))
 
 # need to figure out how to import the data without issues with masks etc
-train_dataloader = DataLoader(tr, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
-valid_dataloader = DataLoader(gt, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
+#train_dataloader = DataLoader(tr, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
+#valid_dataloader = DataLoader(gt, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
 
-print(tr)
+#print(tr)
 
 optimizer = optim.Adam(unet_3d.parameters(), LEARNING_RATE)
