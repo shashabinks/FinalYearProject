@@ -9,6 +9,7 @@ import re
 import numpy as np
 import torch
 import torch.tensor as ts
+import torchvision
 import torch.nn as nn
 import torchio as tio
 import torch.nn.functional as F
@@ -17,9 +18,7 @@ from mpl_toolkits.mplot3d import Axes3D
 from PIL import Image
 import SimpleITK as sitk
 
-# take all the 3D images, and sort them under each modality
-# i.e. {CT:[ ], CBV:[], ...}
-# this class will return all the images needed by the loader
+# 5-Channel Loader
 class ISLES2018_loader(Dataset):
     def __init__(self, file_dir, modalities=None):
         super().__init__()
@@ -45,10 +44,19 @@ class ISLES2018_loader(Dataset):
 
                         # add image augmentations here 
 
-                        image_slice = torch.from_numpy(case[modality].get_fdata()[:,:,i]) # image slice
+                        
+                        normalize = torchvision.transforms.Normalize([0.5],[0.5])
+                        image_slice = torch.from_numpy(case[modality].get_fdata()[:,:,i]) # image slice converted to torch
+                        
+                        
+                        # normalize image
+                        image_slice = normalize(image_slice.float().unsqueeze(0))
+
+                        
+                        
                         arr.append(image_slice.float().unsqueeze(0)) # add the slice to the array
 
-                combined = torch.cat(tuple(arr), dim=0) # concatenate all the slices to form 5 channel
+                combined = torch.cat(tuple(arr), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
                 
                 #print(combined.shape)
                 #plt.imshow(combined[2,:,:],cmap='gray')
@@ -56,6 +64,7 @@ class ISLES2018_loader(Dataset):
 
                 ground_truth_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]) # slice of the corresponding ground_truths
 
+                print(ground_truth_slice.float().unsqueeze(0).shape)
                 #plt.imshow(ground_truth_slice[:,:],cmap='gray')
                 #plt.show()                
                 self.samples.append((combined, ground_truth_slice.float().unsqueeze(0)))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
@@ -70,9 +79,9 @@ class ISLES2018_loader(Dataset):
     def __len__(self):      # return length of dataset for each modality
         return len(self.samples)
 
-    def viewData(self):
-        for modality in self.data:
-            print(self.data[modality][2].shape)
+    def normalize(self, img):
+
+        return img
 
     # here we want to apply different augmentations 
     def transform(self,img):

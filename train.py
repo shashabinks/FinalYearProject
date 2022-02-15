@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, random_split
 
 # hyperparameters
 LEARNING_RATE = 1e-4
@@ -37,9 +37,13 @@ dataset = ISLES2018_loader(directory, modalities)
 # split dataset into train/val for given modality
 print(len(dataset))
 
+train_set, val_set = random_split(dataset, (400,102))
+print(len(train_set[1]))
+print(len(val_set))
+
 # need to figure out how to import the data without issues with masks etc
-#train_dataloader = DataLoader(tr, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
-#valid_dataloader = DataLoader(gt, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
+train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
+valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
 
 #print(tr)
 
