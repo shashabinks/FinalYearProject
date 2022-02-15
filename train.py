@@ -20,15 +20,16 @@ from torch.utils.data import DataLoader, random_split
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 3
+NUM_EPOCHS = 100
 NUM_WORKERS = 2
-IMAGE_HEIGHT = 256  #      this can be changed to fit ur data
+IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
 LOAD_MODEL = False
 
-unet_3d = UNet()
-unet_3d.to(DEVICE)
+unet_2d = UNet() # make sure to change the number of channels in the unet model file
+print(DEVICE)
+unet_2d.to(DEVICE)
 
 directory = "ISLES/TRAINING"
 modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
@@ -39,12 +40,12 @@ print(len(dataset))
 
 train_set, val_set = random_split(dataset, (400,102))
 print(len(train_set[1]))
-print(len(val_set))
+print(len(train_set),len(val_set))
 
 # need to figure out how to import the data without issues with masks etc
-train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
-valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
+train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4 ,shuffle=False, pin_memory=True)
+valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=4 ,shuffle=False, pin_memory=True)
 
 #print(tr)
 
-optimizer = optim.Adam(unet_3d.parameters(), LEARNING_RATE)
+optimizer = optim.Adam(unet_2d.parameters(), LEARNING_RATE)

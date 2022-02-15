@@ -43,14 +43,14 @@ class ISLES2018_loader(Dataset):
                     if modality != 'OT':                # ignore the ground truth
 
                         # add image augmentations here 
-
-                        
-                        normalize = torchvision.transforms.Normalize([0.5],[0.5])
-                        image_slice = torch.from_numpy(case[modality].get_fdata()[:,:,i]) # image slice converted to torch
+                        slice = case[modality].get_fdata()[:,:,i]
+                        #slice = self.n4BiasCorrection(slice)
+                        #normalize = torchvision.transforms.Normalize([0.5],[0.5])
+                        image_slice = torch.from_numpy(slice) # image slice converted to torch
                         
                         
                         # normalize image
-                        image_slice = normalize(image_slice.float().unsqueeze(0))
+                        #image_slice = normalize(image_slice.float().unsqueeze(0))
 
                         
                         
@@ -64,7 +64,7 @@ class ISLES2018_loader(Dataset):
 
                 ground_truth_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]) # slice of the corresponding ground_truths
 
-                print(ground_truth_slice.float().unsqueeze(0).shape)
+                #print(ground_truth_slice.float().unsqueeze(0).shape)
                 #plt.imshow(ground_truth_slice[:,:],cmap='gray')
                 #plt.show()                
                 self.samples.append((combined, ground_truth_slice.float().unsqueeze(0)))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
@@ -104,16 +104,12 @@ class ISLES2018_loader(Dataset):
         return t_img
     
     # this bit is a huge bottleneck
-    def n4BiasCorrection(self, nii_path):
+    def n4BiasCorrection(self, img):
         
-        img = sitk.ReadImage(nii_path)
-
+        img = sitk.GetImageFromArray(img)
         image = sitk.Cast(img, sitk.sitkFloat32)
         corrected_img = sitk.N4BiasFieldCorrection(image)
         img = sitk.GetArrayFromImage(corrected_img)
-
-        plt.imshow(img[4,:,:],cmap='gray')
-        plt.show()
 
         return img
     
