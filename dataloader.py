@@ -38,20 +38,22 @@ class ISLES2018_loader(Dataset):
                 modality = re.search(r'SMIR.Brain.XX.O.(\w+).\d+',file_path).group(1)
                 
                 if modality != 'CT_4DPWI': # ignore dwi images for now
-                    nii_path_name = os.path.join(case_path,file_path,file_path+'.nii')
-                    img = nib.load(nii_path_name)
+                    nii_path = os.path.join(case_path,file_path,file_path+'.nii')
 
-                    img = sitk.ReadImage(nii_path_name)
+                    # uncomment this line to load the image file
+                    #img = nib.load(nii_path_name)
 
-                    image = sitk.Cast(img, sitk.sitkFloat32)
-                    corrected_img = sitk.N4BiasFieldCorrection(image)
-                    img = sitk.GetArrayFromImage(corrected_img)
-                    #print(sitk.GetArrayFromImage(corrected_img))
-
-                    print(img.shape)
-                    break
+                    # returns an image in the form of an array
+                    img = self.n4BiasCorrection(nii_path)
+                    
+                    
                     # maybe apply transformations here then append to the overall data file
                     self.data[modality].append(self.transform(img)) # create a set of tensors for each modality
+            
+                break
+                
+            break
+        
                             
     
     def __getitem__(self, modality):
@@ -72,7 +74,9 @@ class ISLES2018_loader(Dataset):
 
         # convert img to tensor
         #img = img.get_fdata()
-        #img = img.reshape(1,img.shape[0],img.shape[1],img.shape[2])
+        
+        # need this to add feature channel
+        img = img.reshape(1,img.shape[0],img.shape[1],img.shape[2])
         t_img = torch.from_numpy(img)
 
         # normalize image
@@ -115,11 +119,19 @@ class ISLES2018_loader(Dataset):
             plt.show()
             break
     
-    def n4BiasCorrection(self, image):
+    # this bit is a huge bottleneck
+    def n4BiasCorrection(self, nii_path):
         
-        n_img = sitk.N4BiasFieldCorrection(image)
+        img = sitk.ReadImage(nii_path)
 
-        return n_img
+        image = sitk.Cast(img, sitk.sitkFloat32)
+        corrected_img = sitk.N4BiasFieldCorrection(image)
+        img = sitk.GetArrayFromImage(corrected_img)
+
+        plt.imshow(img[4,:,:],cmap='gray')
+        plt.show()
+
+        return img
     
     # returns the modality and ground truth image
     def getData(self,modality):
