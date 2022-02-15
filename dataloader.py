@@ -13,7 +13,8 @@ import torchio as tio
 import torch.nn.functional as F
 import torch.optim as optim
 from mpl_toolkits.mplot3d import Axes3D
-import monai
+from PIL import Image
+import SimpleITK as sitk
 
 # take all the 3D images, and sort them under each modality
 # i.e. {CT:[ ], CBV:[], ...}
@@ -39,23 +40,19 @@ class ISLES2018_loader(Dataset):
                 if modality != 'CT_4DPWI': # ignore dwi images for now
                     nii_path_name = os.path.join(case_path,file_path,file_path+'.nii')
                     img = nib.load(nii_path_name)
+
+                    img = sitk.ReadImage(nii_path_name)
+
+                    image = sitk.Cast(img, sitk.sitkFloat32)
+                    corrected_img = sitk.N4BiasFieldCorrection(image)
+                    img = sitk.GetArrayFromImage(corrected_img)
+                    #print(sitk.GetArrayFromImage(corrected_img))
+
+                    print(img.shape)
+                    break
                     # maybe apply transformations here then append to the overall data file
-                    self.data[modality].append(img)
-
-            """
-            for file_path in os.listdir(case_path):
-                modality = re.search(r'SMIR.Brain.XX.O.(\w+).\d+',file_path).group(1)
-                if modality != 'CT_4DPWI': 
-                    nii_path_name = os.path.join(case_path,file_path,file_path+'.nii')
-                    img = nib.load(nii_path_name)
-                    case[modality] = img
-            
-            self.cases = case
-            """
-            
-
-        ## TODO: implement conversion from .nii to tensor, maybe update the data variable
-           
+                    self.data[modality].append(self.transform(img)) # create a set of tensors for each modality
+                            
     
     def __getitem__(self, modality):
         return self.data[modality]   # return the dataset corresponding to the input modality
@@ -64,25 +61,41 @@ class ISLES2018_loader(Dataset):
         return len(self.data["CT"])
 
     def viewData(self):
-        print(self.data)
+        for modality in self.data:
+            print(self.data[modality][2].shape)
+
+    # here we want to apply different augmentations 
+    def transform(self,img):
+        # apply bias correction
+        # rescale image
+        #rescale = tio.Resize() 128 x 128 x 32
+
+        # convert img to tensor
+        #img = img.get_fdata()
+        #img = img.reshape(1,img.shape[0],img.shape[1],img.shape[2])
+        t_img = torch.from_numpy(img)
+
+        # normalize image
+        normalize = tio.ZNormalization()
+        t_img = normalize(t_img)
+
     
-    def normalise(self,arr):
-        
-        arr_min = np.min(arr)
-        return (arr-arr_min)/(np.max(arr)-arr_min)
+        return t_img
+
     
     def view_slices(self):
         for image in self.data["CT_CBV"]:
-            img = image.get_fdata()
+            #img = image.get_fdata()
             #print(img.shape)
-            img = img.reshape(1,256,256,8)
+            #img = img.reshape(1,256,256,8)
             #print(new.shape)
 
             #HOUNSFIELD_AIR, HOUNSFIELD_BONE = 10, 45 # cbv
             #HOUNSFIELD_AIR, HOUNSFIELD_BONE = -200, 90 # mtt
-
-            x_tensor = torch.from_numpy(img)
-            print(x_tensor.shape)
+            
+            img = tio.ScalarImage(image)
+            #x_tensor = torch.from_numpy(img)
+            #print(x_tensor.shape)
 
             #plt.imshow(img[:,:,1],cmap='gray', alpha=1)
             #plt.colorbar(label='intensity')
@@ -95,12 +108,18 @@ class ISLES2018_loader(Dataset):
                 #out_min_max=(0, 1),percentiles=(0.5, 99.5), in_min_max=(0, 1))
             #ct_normalized = rescale(x_tensor)
 
-            new_img = transforms(x_tensor)
-            print(new_img.shape)
+            #new_img = transforms(x_tensor)
+            print(img.shape)
 
-            plt.imshow(new_img[0,:,:,3].unsqueeze(0))
+            plt.imshow(img[0,:,:,3].unsqueeze(0))
             plt.show()
             break
+    
+    def n4BiasCorrection(self, image):
+        
+        n_img = sitk.N4BiasFieldCorrection(image)
+
+        return n_img
     
     # returns the modality and ground truth image
     def getData(self,modality):
@@ -109,9 +128,9 @@ class ISLES2018_loader(Dataset):
             
             
 
-#directory = "ISLES/TRAINING"
-#modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
-#dataset = ISLES2018_loader(directory, modalities)
-#dataset.viewData()
+directory = "ISLES/TRAINING"
+modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+dataset = ISLES2018_loader(directory, modalities)
+dataset.viewData()
 #dataset.view_slices()
 

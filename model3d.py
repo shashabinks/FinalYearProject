@@ -113,7 +113,7 @@ class UNet(nn.Module):
 if __name__ == "__main__":
   device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
   image_size = 128
-  x = torch.Tensor(1, 3, image_size, image_size, image_size)
+  x = torch.Tensor(1, 3, image_size, image_size, image_size)  # image input is either 256 x 256 x 8 or 128 x 128 x 32
   x.to(device)
   print("x size: {}".format(x.size()))
   

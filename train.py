@@ -9,6 +9,7 @@ import matplotlib.pyplot as plt
 import os
 import re
 import numpy as np
+import torchio as tio
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
