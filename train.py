@@ -49,6 +49,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
     # iterate through the epochs
     for epoch in range(num_of_epochs):
         running_loss = 0.0
+        epoch_loss = 0.0
 
         # iterate through the batches
         for i, data in enumerate(loaders[0], 0):
@@ -67,9 +68,11 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
             running_loss += loss.item()
 
-            if i % 25 == 24:    
-                print('[%d, %5d] loss: %.3f' % (epoch+1, i+1, running_loss / 25))
-                running_loss = 0.0
+            
+        epoch_loss = running_loss / 100
+        print(f"Overall Epoch: {epoch} loss: {epoch_loss}")
+        running_loss = 0.0
+
             
 
 
@@ -104,4 +107,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,loss_fn)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)

@@ -65,16 +65,14 @@ class ISLES2018_loader(Dataset):
                         #slice = case[modality].get_fdata()[:,:,i]
                         
                         
-
-                        
                         
                         #image_slice = torch.from_numpy(slice).float().unsqueeze(0) # image slice converted to torch tensor
                         #slice = normalize(image_slice)
                         #print(np.max(image.numpy()), np.min(image.numpy()))
-
+                        #print(image.shape)
                         # normalize image
                         #image_slice = normalize(image_slice)
-                        #plt.imshow(image_slice.squeeze(0), cmap="gray")
+                        #plt.imshow(image.squeeze(0), cmap="gray")
                         #plt.colorbar(label='intensity')
                         #plt.show()
 
@@ -86,7 +84,7 @@ class ISLES2018_loader(Dataset):
 
                 
                 gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice).astype('float64')
+                gt_array = np.array(gt_slice).astype('float32')
                 gt_2d = gt_array[:,:,i].transpose((1,0))
 
                 gt_2d = np.uint8(gt_2d[None,:])
@@ -114,8 +112,7 @@ class ISLES2018_loader(Dataset):
         
             
         
-                            
-    
+                        
     def __getitem__(self, idx):
         return self.samples[idx]   # return the dataset corresponding to the input modality
     
@@ -135,28 +132,9 @@ class ISLES2018_loader(Dataset):
 
         
         return slices, gt
-
-    # here we want to apply different augmentations 
-    def normalizes(self,img):
-        # apply bias correction
-        # rescale image
-        #rescale = tio.Resize() 128 x 128 x 32
-
-        # convert img to tensor
-        #img = img.get_fdata()
-        
-        # need this to add feature channel
-        img = img.reshape(1,img.shape[0],img.shape[1],img.shape[2])
-        t_img = torch.from_numpy(img)
-
-        # normalize image
-        normalize = tio.ZNormalization()
-        t_img = normalize(t_img)
-
-    
-        return t_img
     
     def normalizeIntensityRange(self,data):
+        
         return (data - np.min(data)) / (np.max(data) - np.min(data))
     
     # this bit is a huge bottleneck
