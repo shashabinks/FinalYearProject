@@ -50,7 +50,7 @@ class ISLES2018_loader(Dataset):
 
                         slice = self.normalizeIntensityRange(case[modality].get_fdata()[:,:,i])
 
-                        print(np.max(slice), np.min(slice))
+                        #print(np.max(slice), np.min(slice))
                         
                         """
                         slice=case[modality].get_fdata()
@@ -70,13 +70,14 @@ class ISLES2018_loader(Dataset):
 
                         # normalize image
                         #image_slice = normalize(image_slice)
-                        plt.imshow(image_slice.squeeze(0), cmap="gray")
-                        plt.colorbar(label='intensity')
-                        plt.show()
+                        #plt.imshow(image_slice.squeeze(0), cmap="gray")
+                        #plt.colorbar(label='intensity')
+                        #plt.show()
 
 
                         slices.append(image_slice) # add the slice to the array
                 
+                #print(np.max(case['OT'].get_fdata()), np.min(case['OT'].get_fdata()))
                 gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
 
                 """
