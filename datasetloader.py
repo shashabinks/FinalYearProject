@@ -82,18 +82,18 @@ class ISLES2018_loader(Dataset):
                         slices.append(image) # add the slice to the array
                 
                 #print(np.max(case['OT'].get_fdata()), np.min(case['OT'].get_fdata()))
-                gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
+                #gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
 
                 
                 gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice)
+                gt_array = np.array(gt_slice).astype('float64')
                 gt_2d = gt_array[:,:,i].transpose((1,0))
 
                 gt_2d = np.uint8(gt_2d[None,:])
                 gt_2d = torch.from_numpy(gt_2d)
 
-                #gt = TF.to_pil_image(gt_2d)
-                #gt = TF.to_tensor(gt)
+                gt = TF.to_pil_image(gt_2d)
+                gt = TF.to_tensor(gt)
                 
                 
 
@@ -110,7 +110,7 @@ class ISLES2018_loader(Dataset):
                 combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
                 
                   
-                self.samples.append((combined, gt_2d))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
+                self.samples.append((combined, gt))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
         
             
         
