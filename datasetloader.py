@@ -13,10 +13,12 @@ import torchvision
 import torch.nn as nn
 import torchio as tio
 import torch.nn.functional as F
+import torchvision.transforms.functional as TF
 import torch.optim as optim
 from mpl_toolkits.mplot3d import Axes3D
 from PIL import Image
 import SimpleITK as sitk
+import random
 
 # 5-Channel Loader
 class ISLES2018_loader(Dataset):
@@ -36,38 +38,37 @@ class ISLES2018_loader(Dataset):
                     img = nib.load(nii_path_name)
                     case[modality] = img
             
+            normalize = torchvision.transforms.Normalize([0.5],[0.5])
 
             for i in range(case['CT'].shape[2]):        # go through each case dimension (2-22)
-                arr = []                                # create array for each image slice
+                slices = []                                # create array for each image slice
                 for modality in modalities:             # loop through the modalities
                     if modality != 'OT':                # ignore the ground truth
 
                         # add image augmentations here 
+
                         slice = case[modality].get_fdata()[:,:,i]
-                        #slice = self.n4BiasCorrection(slice)
-                        #normalize = torchvision.transforms.Normalize([0.5],[0.5])
-                        image_slice = torch.from_numpy(slice) # image slice converted to torch
                         
+                        #slice = self.n4BiasCorrection(slice)
+                        
+                        image_slice = torch.from_numpy(slice).float().unsqueeze(0) # image slice converted to torch tensor
                         
                         # normalize image
-                        #image_slice = normalize(image_slice.float().unsqueeze(0))
+                        image_slice = normalize(image_slice)
 
-                        
-                        
-                        arr.append(image_slice.float().unsqueeze(0)) # add the slice to the array
-
-                combined = torch.cat(tuple(arr), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
+                        slices.append(image_slice) # add the slice to the array
                 
-                #print(combined.shape)
-                #plt.imshow(combined[2,:,:],cmap='gray')
-                #plt.show()
+                gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
+                
+                gt_slice = normalize(gt_slice)
 
-                ground_truth_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]) # slice of the corresponding ground_truths
+                # now transform all the slices in the array before concatenating them:
+                # slices, gt_slice = self.transform(slices,gt_slice)
 
-                #print(ground_truth_slice.float().unsqueeze(0).shape)
-                #plt.imshow(ground_truth_slice[:,:],cmap='gray')
-                #plt.show()                
-                self.samples.append((combined, ground_truth_slice.float().unsqueeze(0)))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
+                combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
+                
+                  
+                self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
         
             
         
@@ -79,12 +80,22 @@ class ISLES2018_loader(Dataset):
     def __len__(self):      # return length of dataset for each modality
         return len(self.samples)
 
-    def normalize(self, img):
+    def transform(self, slices, gt):
+        
+        # flip horizontally randomly
+        if random.random() > 0.5:
+            for i in range(len(slices)):
+                image = slices[i]
+                image = TF.hflip(image)
+                slices[i] = image
+            
+            gt = TF.hflip(image)
 
-        return img
+        
+        return slices, gt
 
     # here we want to apply different augmentations 
-    def transform(self,img):
+    def normalizes(self,img):
         # apply bias correction
         # rescale image
         #rescale = tio.Resize() 128 x 128 x 32

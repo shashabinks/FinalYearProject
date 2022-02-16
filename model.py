@@ -19,7 +19,7 @@ class Block(nn.Module):
 # each c-block is followed by a max pooling operation (between two block operations)
 
 class Encoder(nn.Module):
-    def __init__(self, chs=(3,64,128,256,512,1024)):        # we define the channel order, so we start from 3 channels and go down to 1024 channels (the very bottom level)
+    def __init__(self, chs):        # we define the channel order, so we start from 3 channels and go down to 1024 channels (the very bottom level)
         super().__init__()                                  # this should be different for the lesion segmentation
         self.enc_blocks = nn.ModuleList([Block(chs[i], chs[i+1]) for i in range(len(chs)-1)]) # we essentially loop through each channel and apply the feature in/outs
         self.pool = nn.MaxPool2d(2) # define a 2x2 pooling filter, can be 2x2x2 for the 3d case
@@ -38,7 +38,7 @@ class Encoder(nn.Module):
 # we also have to do cropping which is necessary due to the loss of border pixels in every convolution
 
 class Decoder(nn.Module):
-    def __init__(self, chs=(1024,512,256,128,64)):  # we go from a 1024 channel image back up to a 64 channel (eventually becomes 1 channel at the very end)
+    def __init__(self, chs):  # we go from a 1024 channel image back up to a 64 channel (eventually becomes 1 channel at the very end)
         super().__init__()
         self.chs = chs
         self.upconvs = nn.ModuleList([nn.ConvTranspose2d(chs[i], chs[i+1], 2, 2) for i in range(len(chs)-1)])   # list of t-convolutions going upwards
@@ -61,7 +61,7 @@ class Decoder(nn.Module):
 
 # Now we just need to link all this up to form the overall u-net
 class UNet(nn.Module):
-    def __init__(self,enc_chs=(5,64,128,256,512,1024), dec_chs=(1024, 512, 256, 128, 64), num_class=1, retain_dim=False, out_sze=(572,572)):
+    def __init__(self,enc_chs=(5,32,64,128,256,512), dec_chs=(512, 256, 128, 64,32), num_class=1, retain_dim=True, out_sze=(256,256)):
         super().__init__()
         self.encoder = Encoder(enc_chs) # carry out the encoding
         self.decoder = Decoder(dec_chs) # carry out the decoding
@@ -79,7 +79,7 @@ class UNet(nn.Module):
         return out 
 
 
-if __name__=="__main__":
-    unet = UNet()
-    x    = torch.randn(1, 3, 572, 572)
-    print(unet(x).shape)
+#if __name__=="__main__":
+ #   unet = UNet()
+ ##   x    = torch.randn(1, 5, 256,256)
+  #  print(unet(x).shape)
