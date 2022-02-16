@@ -18,6 +18,7 @@ import torch.optim as optim
 from mpl_toolkits.mplot3d import Axes3D
 from PIL import Image
 import SimpleITK as sitk
+import albumentations as A
 import random
 
 # 5-Channel Loader
@@ -38,7 +39,7 @@ class ISLES2018_loader(Dataset):
                     img = nib.load(nii_path_name)
                     case[modality] = img
             
-            normalize = torchvision.transforms.Normalize([0.5],[0.5])
+            normalize = torchvision.transforms.Normalize([0.0],[1.0])
 
             for i in range(case['CT'].shape[2]):        # go through each case dimension (2-22)
                 slices = []                                # create array for each image slice
@@ -48,11 +49,8 @@ class ISLES2018_loader(Dataset):
                         # add image augmentations here 
                         #print(np.max(case[modality].get_fdata()), np.min(case[modality].get_fdata()))
 
-                        slice = self.normalizeIntensityRange(case[modality].get_fdata()[:,:,i])
-
-                        #print(np.max(slice), np.min(slice))
                         
-                        """
+                        
                         slice=case[modality].get_fdata()
                         img_array = np.array(slice).astype('float64')
                         img_2d = img_array[:,:,i].transpose((1,0))
@@ -61,12 +59,18 @@ class ISLES2018_loader(Dataset):
 
                         image = TF.to_pil_image(img_2d)
                         image = TF.to_tensor(image)
-                        """
-                        #print(img_2d.shape)
-                        #slice = self.n4BiasCorrection(slice)
                         
-                        image_slice = torch.from_numpy(slice).float().unsqueeze(0) # image slice converted to torch tensor
                         
+                        
+                        #slice = case[modality].get_fdata()[:,:,i]
+                        
+                        
+
+                        
+                        
+                        #image_slice = torch.from_numpy(slice).float().unsqueeze(0) # image slice converted to torch tensor
+                        #slice = normalize(image_slice)
+                        #print(np.max(image.numpy()), np.min(image.numpy()))
 
                         # normalize image
                         #image_slice = normalize(image_slice)
@@ -75,12 +79,12 @@ class ISLES2018_loader(Dataset):
                         #plt.show()
 
 
-                        slices.append(image_slice) # add the slice to the array
+                        slices.append(image) # add the slice to the array
                 
                 #print(np.max(case['OT'].get_fdata()), np.min(case['OT'].get_fdata()))
                 gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
 
-                """
+                
                 gt_slice=case['OT'].get_fdata()
                 gt_array = np.array(gt_slice)
                 gt_2d = gt_array[:,:,i].transpose((1,0))
@@ -88,9 +92,9 @@ class ISLES2018_loader(Dataset):
                 gt_2d = np.uint8(gt_2d[None,:])
                 gt_2d = torch.from_numpy(gt_2d)
 
-                gt = TF.to_pil_image(gt_2d)
-                gt = TF.to_tensor(gt)
-                """
+                #gt = TF.to_pil_image(gt_2d)
+                #gt = TF.to_tensor(gt)
+                
                 
 
                 #plt.imshow(gt.squeeze(0), cmap="gray")
@@ -106,7 +110,7 @@ class ISLES2018_loader(Dataset):
                 combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
                 
                   
-                self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
+                self.samples.append((combined, gt_2d))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
         
             
         

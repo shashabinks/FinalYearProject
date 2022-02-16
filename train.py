@@ -20,7 +20,7 @@ from torch.utils.data import DataLoader, random_split
 from utils import DiceLoss, check_accuracy
 
 # hyperparameters
-LEARNING_RATE = 1e-4
+LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 100
@@ -67,8 +67,8 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
             running_loss += loss.item()
 
-            if i % 25 == 0:    
-                print('[%d, %5d] loss: %.3f' % (epoch, i, running_loss / 25))
+            if i % 25 == 24:    
+                print('[%d, %5d] loss: %.3f' % (epoch+1, i+1, running_loss / 25))
                 running_loss = 0.0
             
 
@@ -104,4 +104,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    #train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,loss_fn)
