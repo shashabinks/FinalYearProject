@@ -38,10 +38,10 @@ def check_accuracy(loader, model, device="cuda"):
     dice_score = 0
     model.eval()
 
-    with torch.no_grad():       # we want to compare the mask and the predictions together/ for binary
+    with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
         for x, y in loader:
             x = x.to(device)
-            y = y.to(device).unsqueeze(1)
+            y = y.to(device)
             preds = torch.sigmoid(model(x))
             preds = (preds > 0.5).float()
             num_correct += (preds == y).sum()

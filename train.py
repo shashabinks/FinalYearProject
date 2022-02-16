@@ -14,9 +14,10 @@ import torchio as tio
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from utils import DiceLoss
+from utils import DiceLoss, check_accuracy
 
 # hyperparameters
 LEARNING_RATE = 1e-4
@@ -29,6 +30,19 @@ IMAGE_WIDTH = 256
 PIN_MEMORY = True
 LOAD_MODEL = False
 
+def show_batch(dl):
+    for images, labels in dl:
+        print(len(images))
+        print(images[0].shape)
+        
+        image = images[0].permute(1,2,0)
+        label = labels[0]
+
+        plt.imshow(label.squeeze(0), cmap="gray")
+        
+        plt.show()
+        
+
 
 def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
     
@@ -38,6 +52,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
         # iterate through the batches
         for i, data in enumerate(loaders[0], 0):
+
             # put images into devices
             train_image, ground_truth = data[0].to(DEVICE), data[1].to(DEVICE)
             optimizer.zero_grad()
@@ -52,29 +67,30 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
             running_loss += loss.item()
 
-           
-        print("loss for epoch " + str(epoch) + ":  " + str(running_loss))
+            if i % 25 == 0:    
+                print('[%d, %5d] loss: %.3f' % (epoch, i, running_loss / 25))
+                running_loss = 0.0
             
 
 
 if __name__ == '__main__':
+
     unet_2d = UNet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
     unet_2d.to(DEVICE)
 
     train_directory = "ISLES/TRAINING"
-    #test_directory = "ISLES/TESTING"
+    test_directory = "ISLES/TESTING"
 
     modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
-    train_dataset = ISLES2018_loader(train_directory, modalities)
-    #test_dataset = ISLES2018_loader(test_directory, modalities)
 
-    # split dataset into train/val for given modality
-    #print(len(train_dataset))
+    train_dataset = ISLES2018_loader(train_directory, modalities)
+    print("Loaded Training Data")
+
+    #test_dataset = ISLES2018_loader(test_directory, modalities)
+    #print("Loaded Test Data")
 
     train_set, val_set = random_split(train_dataset, (400,102))
-    #print(len(train_set[1]))
-    #print(len(train_set),len(val_set))
 
     # need to figure out how to import the data without issues with masks etc
     train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4 ,shuffle=True, pin_memory=True)
@@ -87,4 +103,5 @@ if __name__ == '__main__':
 
     loss_fn = nn.BCEWithLogitsLoss()
 
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,loss_fn)
+    #show_batch(train_dl)
+    #train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)

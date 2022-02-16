@@ -22,7 +22,7 @@ import random
 
 # 5-Channel Loader
 class ISLES2018_loader(Dataset):
-    def __init__(self, file_dir, modalities=None):
+    def __init__(self, file_dir, modalities=None,validate=False):
         super().__init__()
         
         self.samples = []
@@ -46,22 +46,59 @@ class ISLES2018_loader(Dataset):
                     if modality != 'OT':                # ignore the ground truth
 
                         # add image augmentations here 
+                        #print(np.max(case[modality].get_fdata()), np.min(case[modality].get_fdata()))
 
-                        slice = case[modality].get_fdata()[:,:,i]
+                        slice = self.normalizeIntensityRange(case[modality].get_fdata()[:,:,i])
+
+                        print(np.max(slice), np.min(slice))
                         
+                        """
+                        slice=case[modality].get_fdata()
+                        img_array = np.array(slice).astype('float64')
+                        img_2d = img_array[:,:,i].transpose((1,0))
+                        img_2d = np.uint8(img_2d[None,:])
+                        img_2d = torch.from_numpy(img_2d)
+
+                        image = TF.to_pil_image(img_2d)
+                        image = TF.to_tensor(image)
+                        """
+                        #print(img_2d.shape)
                         #slice = self.n4BiasCorrection(slice)
                         
                         image_slice = torch.from_numpy(slice).float().unsqueeze(0) # image slice converted to torch tensor
                         
+
                         # normalize image
-                        image_slice = normalize(image_slice)
+                        #image_slice = normalize(image_slice)
+                        plt.imshow(image_slice.squeeze(0), cmap="gray")
+                        plt.colorbar(label='intensity')
+                        plt.show()
+
 
                         slices.append(image_slice) # add the slice to the array
                 
                 gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
-                
-                gt_slice = normalize(gt_slice)
 
+                """
+                gt_slice=case['OT'].get_fdata()
+                gt_array = np.array(gt_slice)
+                gt_2d = gt_array[:,:,i].transpose((1,0))
+
+                gt_2d = np.uint8(gt_2d[None,:])
+                gt_2d = torch.from_numpy(gt_2d)
+
+                gt = TF.to_pil_image(gt_2d)
+                gt = TF.to_tensor(gt)
+                """
+                
+
+                #plt.imshow(gt.squeeze(0), cmap="gray")
+                #plt.colorbar(label='intensity')
+                #plt.show()
+                
+                #gt_slice = normalize(gt_slice)
+                #plt.imshow(gt_slice.squeeze(0), cmap="gray")
+                #plt.show()
                 # now transform all the slices in the array before concatenating them:
                 # slices, gt_slice = self.transform(slices,gt_slice)
 
@@ -114,6 +151,9 @@ class ISLES2018_loader(Dataset):
     
         return t_img
     
+    def normalizeIntensityRange(self,data):
+        return (data - np.min(data)) / (np.max(data) - np.min(data))
+    
     # this bit is a huge bottleneck
     def n4BiasCorrection(self, img):
         
@@ -131,9 +171,9 @@ class ISLES2018_loader(Dataset):
             
             
 
-directory = "ISLES/TRAINING"
-modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
-dataset = ISLES2018_loader(directory, modalities)
+#directory = "ISLES/TRAINING"
+#modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+#dataset = ISLES2018_loader(directory, modalities)
 #print(dataset.__len__())
 
 
