@@ -4,7 +4,7 @@ import torchvision
 from torch.nn import functional as F
 from zmq import device
 from model import UNet
-from datasetloader import ISLES2018_loader
+from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
 import nibabel as nib
 import matplotlib.pyplot as plt
 import os
@@ -52,13 +52,16 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
         epoch_loss = 0.0
 
         # iterate through the batches
-        for i, data in enumerate(loaders[0], 0):
+        for i, data in enumerate(loaders[0]):
 
             # put images into devices
             train_image, ground_truth = data[0].to(DEVICE), data[1].to(DEVICE)
             optimizer.zero_grad()
 
+            # prediction
             out = model(train_image)
+
+            # loss compared to actual
             loss = loss_fn(out,ground_truth)
 
             # backward prop and optimize
@@ -78,22 +81,31 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
 if __name__ == '__main__':
 
+    #model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
+    #in_channels=5, out_channels=1, init_features=32, pretrained=False)
+
     unet_2d = UNet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
     unet_2d.to(DEVICE)
 
+
+    # Need to consider splitting the training set manually
     train_directory = "ISLES/TRAINING"
-    test_directory = "ISLES/TESTING"
+    val_directory = "ISLES/VALIDATION"
 
     modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
 
-    train_dataset = ISLES2018_loader(train_directory, modalities)
+    # load our train and validation sets
+    train_set = train_ISLES2018_loader(train_directory, modalities)
     print("Loaded Training Data")
+    val_set = val_ISLES2018_loader(val_directory, modalities)
+    print("Loaded Validation Data")
 
-    #test_dataset = ISLES2018_loader(test_directory, modalities)
-    #print("Loaded Test Data")
 
-    train_set, val_set = random_split(train_dataset, (400,102))
+    #train_set, val_set = random_split(train_dataset, (400,102))
+
+    print(len(train_set))
+    print(len(val_set))
 
     # need to figure out how to import the data without issues with masks etc
     train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4 ,shuffle=True, pin_memory=True)
@@ -107,4 +119,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)
+    #train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)
