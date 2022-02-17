@@ -52,7 +52,7 @@ class train_ISLES2018_loader(Dataset):
                         
                         
                         slice=case[modality].get_fdata()
-                        img_array = np.array(slice).astype('float64')
+                        img_array = np.array(slice).astype('float32')
                         img_2d = img_array[:,:,i].transpose((1,0))
                         img_2d = np.uint8(img_2d[None,:])
                         img_2d = torch.from_numpy(img_2d)
@@ -105,9 +105,15 @@ class train_ISLES2018_loader(Dataset):
 
                 combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
                 
-                #plt.imshow(combined[0,:,:], cmap="gray")
-                #plt.show()
-                  
+                """
+                f, axarr = plt.subplots(2,2)
+                axarr[0,0].imshow(combined[0, :, :], cmap="gray")
+                axarr[0,1].imshow(combined[1, :, :], cmap="gray")
+                axarr[1,0].imshow(combined[2, :, :], cmap="gray")
+                
+                axarr[1,1].imshow(gt_slice[0, :, :], cmap="gray")
+                plt.show()
+                """
                 self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
         
             
