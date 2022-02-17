@@ -138,6 +138,25 @@ class train_ISLES2018_loader(Dataset):
                 slices[i] = image
             
             gt = TF.hflip(gt)
+        
+        # flip vertically randomly
+        if random.random() > 0.5:
+            for i in range(len(slices)):
+                image = slices[i]
+                image = TF.vflip(image)
+                slices[i] = image
+            
+            gt = TF.vflip(gt)
+        
+        # rotate at random
+        if random.random() > 0.5:
+            angle = random.randint(-30, 30)
+            for i in range(len(slices)):
+                image = slices[i]
+                image = TF.rotate(image, angle, fill=(0,))
+                slices[i] = image
+            
+            gt = TF.rotate(gt, angle, fill=(0,))
 
         # convert back to tensor/normalize
         for i in range(len(slices)):

@@ -22,7 +22,7 @@ from utils import DiceLoss, check_accuracy
 # hyperparameters
 LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 4
+BATCH_SIZE = 2
 NUM_EPOCHS = 100
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
@@ -50,6 +50,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
     for epoch in range(num_of_epochs):
         running_loss = 0.0
         epoch_loss = 0.0
+        train_losses = []
 
         # iterate through the batches
         for i, data in enumerate(loaders[0]):
@@ -64,6 +65,8 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
             # loss compared to actual
             loss = loss_fn(out,ground_truth)
 
+            train_losses.append(loss)
+
             # backward prop and optimize
             loss.backward()
             optimizer.step()
@@ -71,9 +74,9 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
             running_loss += loss.item()
 
-            
+        train_loss = torch.stack(train_losses).mean().item()
         epoch_loss = running_loss / 100
-        print(f"Overall Epoch: {epoch} loss: {epoch_loss}")
+        print(f"Overall Epoch: {epoch} loss: {train_loss}")
         running_loss = 0.0
 
             
@@ -119,4 +122,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    #train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,loss_fn)
