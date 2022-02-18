@@ -65,11 +65,14 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
             image = out.cpu().data.numpy()
             mask = ground_truth.cpu().data.numpy()
+
+            image[image >= 0.7] = 1
+            image[image < 0.7] = 0
             
 
             f, axarr = plt.subplots(2,2)
-            axarr[0,0].imshow(mask[0,0,:,:])
-            axarr[0,1].imshow(image[0,0,:,:])
+            axarr[0,0].imshow(mask[0,0,:,:],cmap="gray",interpolation='nearest')
+            axarr[0,1].imshow(image[0,0,:,:],cmap="gray",interpolation='nearest')
             #plt.imshow(image[0,0,:,:], cmap="gray")
             #plt.colorbar(label='intensity')
             plt.show()
@@ -99,20 +102,20 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 if __name__ == '__main__':
 
     model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-    in_channels=5, out_channels=1, init_features=32, pretrained=False)
+    in_channels=1, out_channels=1, init_features=32, pretrained=False)
 
     unet_2d = UNet_MM() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
-    model.to(DEVICE)
+    unet_2d.to(DEVICE)
 
 
     # Need to consider splitting the training set manually
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
 
-    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+    modalities = ['CT_Tmax']
 
     # load our train and validation sets
     train_set = train_ISLES2018_loader(train_directory, modalities)
@@ -138,4 +141,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    #train_model(model, (train_dl, valid_dl),optimizer,100,dsc_loss)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)

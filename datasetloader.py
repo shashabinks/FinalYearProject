@@ -52,10 +52,10 @@ class train_ISLES2018_loader(Dataset):
                         
                         
                         slice=case[modality].get_fdata()
-                        img_array = np.array(slice).astype('float32')
+                        img_array = np.array(slice)
                         img_2d = img_array[:,:,i].transpose((1,0))
-                        img_2d = np.uint8(img_2d[None,:])
-                        img_2d = torch.from_numpy(img_2d)
+                        img_2d = np.uint8(img_2d[..., None])
+                        #img_2d = torch.from_numpy(img_2d)
 
                         
                         
@@ -83,15 +83,15 @@ class train_ISLES2018_loader(Dataset):
 
                 
                 gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice).astype('float32')
+                gt_array = np.array(gt_slice)
                 gt_2d = gt_array[:,:,i].transpose((1,0))
 
-                gt_2d = np.uint8(gt_2d[None,:])
-                gt_2d = torch.from_numpy(gt_2d)
+                gt_2d = np.uint8(gt_2d[..., None])
+                #gt_2d = torch.from_numpy(gt_2d)
 
                 slices, gt_slice = self.transform(slices,gt_2d)
                 
-                
+                print(slices[0].shape)
 
                 #plt.imshow(gt.squeeze(0), cmap="gray")
                 #plt.colorbar(label='intensity')
@@ -134,6 +134,10 @@ class train_ISLES2018_loader(Dataset):
             slices[i] = image
         
         gt = TF.to_pil_image(gt)
+
+        resize = torchvision.transforms.Resize(size=(256, 256))
+        image = resize(image)
+        gt=  resize(gt)
         
     
         # flip horizontally randomly
@@ -155,14 +159,14 @@ class train_ISLES2018_loader(Dataset):
             gt = TF.vflip(gt)
         
         # rotate at random
-        if random.random() > 0.5:
-            angle = random.randint(-30, 30)
-            for i in range(len(slices)):
-                image = slices[i]
-                image = TF.rotate(image, angle, fill=(0,))
-                slices[i] = image
+        #if random.random() > 0.5:
+        #    angle = random.randint(-30, 30)
+        #    for i in range(len(slices)):
+        #        image = slices[i]
+        #        image = TF.rotate(image, angle, fill=(0,))
+         #       slices[i] = image
             
-            gt = TF.rotate(gt, angle, fill=(0,))
+         #   gt = TF.rotate(gt, angle, fill=(0,))
 
         # convert back to tensor/normalize
         for i in range(len(slices)):
