@@ -138,4 +138,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    train_model(model, (train_dl, valid_dl),optimizer,100,dsc_loss)
+    #train_model(model, (train_dl, valid_dl),optimizer,100,dsc_loss)
