@@ -52,46 +52,28 @@ class train_ISLES2018_loader(Dataset):
                         
                         
                         slice=case[modality].get_fdata()
-                        img_array = np.array(slice)
+                        img_array = np.array(slice).astype('float64')
                         img_2d = img_array[:,:,i].transpose((1,0))
-                        img_2d = np.uint8(img_2d[..., None])
-                        #img_2d = torch.from_numpy(img_2d)
-
-                        
-                        
-                        
-                        
-                        #slice = case[modality].get_fdata()[:,:,i]
-                        
-                        
-                        
-                        #image_slice = torch.from_numpy(slice).float().unsqueeze(0) # image slice converted to torch tensor
-                        #slice = normalize(image_slice)
-                        #print(np.max(image.numpy()), np.min(image.numpy()))
-                        #print(image.shape)
-                        # normalize image
-                        #image_slice = normalize(image_slice)
-                        #plt.imshow(image.squeeze(0), cmap="gray")
-                        #plt.colorbar(label='intensity')
-                        #plt.show()
+                        img_2d = np.uint8(img_2d[None,:])
+                        img_2d = torch.from_numpy(img_2d)
 
 
                         slices.append(img_2d) # add the slice to the array
                 
-                #print(np.max(case['OT'].get_fdata()), np.min(case['OT'].get_fdata()))
+                
                 #gt_slice = torch.from_numpy(case['OT'].get_fdata()[:,:,i]).float().unsqueeze(0) # slice of the corresponding ground_truths
 
                 
                 gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice)
+                gt_array = np.array(gt_slice).astype('float64')
                 gt_2d = gt_array[:,:,i].transpose((1,0))
 
-                gt_2d = np.uint8(gt_2d[..., None])
-                #gt_2d = torch.from_numpy(gt_2d)
+                gt_2d = np.uint8(gt_2d[None,:])
+                gt_2d = torch.from_numpy(gt_2d)
 
                 slices, gt_slice = self.transform(slices,gt_2d)
                 
-                print(slices[0].shape)
+                #print(slices[0].shape)
 
                 #plt.imshow(gt.squeeze(0), cmap="gray")
                 #plt.colorbar(label='intensity')
@@ -159,14 +141,14 @@ class train_ISLES2018_loader(Dataset):
             gt = TF.vflip(gt)
         
         # rotate at random
-        #if random.random() > 0.5:
-        #    angle = random.randint(-30, 30)
-        #    for i in range(len(slices)):
-        #        image = slices[i]
-        #        image = TF.rotate(image, angle, fill=(0,))
-         #       slices[i] = image
+        if random.random() > 0.5:
+            angle = random.randint(-30, 30)
+            for i in range(len(slices)):
+                image = slices[i]
+                image = TF.rotate(image, angle, fill=(0,))
+                slices[i] = image
             
-         #   gt = TF.rotate(gt, angle, fill=(0,))
+            gt = TF.rotate(gt, angle, fill=(0,))
 
         # convert back to tensor/normalize
         for i in range(len(slices)):

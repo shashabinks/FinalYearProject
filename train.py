@@ -23,13 +23,16 @@ from utils import DiceLoss, check_accuracy
 # hyperparameters
 LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 1
+BATCH_SIZE = 4
 NUM_EPOCHS = 100
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
 LOAD_MODEL = False
+
+def accuracy():
+    pass
 
 def show_batch(dl):
     for images, labels in dl:
@@ -66,16 +69,16 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
             image = out.cpu().data.numpy()
             mask = ground_truth.cpu().data.numpy()
 
-            image[image >= 0.7] = 1
-            image[image < 0.7] = 0
+            #image[image >= 0.7] = 1
+            #image[image < 0.7] = 0
             
 
-            f, axarr = plt.subplots(2,2)
-            axarr[0,0].imshow(mask[0,0,:,:],cmap="gray",interpolation='nearest')
-            axarr[0,1].imshow(image[0,0,:,:],cmap="gray",interpolation='nearest')
+            #f, axarr = plt.subplots(2,2)
+            #axarr[0,0].imshow(mask[0,0,:,:],cmap="gray",interpolation='nearest')
+            #axarr[0,1].imshow(image[0,0,:,:],cmap="gray",interpolation='nearest')
             #plt.imshow(image[0,0,:,:], cmap="gray")
             #plt.colorbar(label='intensity')
-            plt.show()
+            #plt.show()
 
             #print(out.shape)
 
@@ -100,9 +103,10 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
 
 
 if __name__ == '__main__':
+    torch.cuda.empty_cache()
 
-    model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-    in_channels=1, out_channels=1, init_features=32, pretrained=False)
+    #model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
+    #in_channels=1, out_channels=1, init_features=32, pretrained=False)
 
     unet_2d = UNet_MM() # make sure to change the number of channels in the unet model file
     print(DEVICE)
@@ -115,7 +119,7 @@ if __name__ == '__main__':
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
 
-    modalities = ['CT_Tmax']
+    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
 
     # load our train and validation sets
     train_set = train_ISLES2018_loader(train_directory, modalities)
@@ -141,4 +145,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCEWithLogitsLoss()
 
     #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,dsc_loss)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,500,loss_fn)

@@ -30,7 +30,7 @@ class DiceLoss(nn.Module):
         intersection = (inputs * targets).sum()                            
         dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)  
         
-        return 1 - dice
+        return 1-dice
 
 def check_accuracy(loader, model, device="cuda"):
     num_correct = 0
@@ -41,7 +41,7 @@ def check_accuracy(loader, model, device="cuda"):
     with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
         for x, y in loader:
             x = x.to(device)
-            y = y.to(device)
+            y = y.to(device).unsqueeze(1)
             preds = torch.sigmoid(model(x))
             preds = (preds > 0.5).float()
             num_correct += (preds == y).sum()
@@ -54,3 +54,5 @@ def check_accuracy(loader, model, device="cuda"):
         f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
     )
     print(f"Dice score: {dice_score/len(loader)}")
+
+    model.train()
