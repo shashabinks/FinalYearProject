@@ -1,3 +1,4 @@
+from cProfile import label
 import torch
 import torch.nn as nn
 import torchvision
@@ -22,22 +23,38 @@ class DiceLoss(nn.Module):
     def __init__(self, weight=None, size_average=True):
         super(DiceLoss, self).__init__()
 
-    def forward(self, inputs, targets, smooth=1):
+    def forward(self, inputs, targets, smooth=1.):
 
         
         
-        inputs = inputs.view(-1)
+        inputs = inputs.contiguous()
 
+        targets = targets.contiguous()
         
+        intersection = (inputs * targets).sum(dim=2).sum(dim=2)                              
+        dice = (2.*intersection + smooth)/(inputs.sum(dim=2).sum(dim=2) + targets.sum(dim=2).sum(dim=2) + smooth)  
 
-
-
-        targets = targets.view(-1)
+        loss = 1 - dice
         
-        intersection = (inputs * targets).sum()                            
-        dice = (2.*intersection + smooth)/(inputs.sum() + targets.sum() + smooth)  
-        
-        return 1-dice
+        return loss.mean(),dice.mean() # output loss
+
+def calc_loss(pred=None, target=None, bce_weight=0.5):
+
+    bceweight = torch.ones_like(target)  +  20 * target
+    bce = F.binary_cross_entropy_with_logits(pred, target, weight= bceweight)
+    
+    pred = torch.sigmoid(pred)
+    dice_loss = DiceLoss()
+    dice,dice_coeff = dice_loss(pred, target)
+
+    #print(f"Train Accuracy:{dice_coeff}")
+
+    loss = bce * bce_weight + dice * (1 - bce_weight)
+    
+   
+    
+    return loss
+
 
 def check_accuracy(loader, model, device="cuda"):
     num_correct = 0
@@ -68,17 +85,27 @@ def check_accuracy(loader, model, device="cuda"):
 def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda"):
     model.eval()
     for idx, (x, y) in enumerate(loader):
-        torchvision.utils.save_image(y, f"{folder}{idx}.png")
+        
         x = x.to(device=device)
         with torch.no_grad():
-            preds = model(x)
-            preds = (preds > 0.5).float()
+            preds = torch.sigmoid(model(x))
+            
+
+            
         
         #plt.imshow(y[0].squeeze(0), cmap="gray")
         #plt.show()
 
         #print(y[0].shape)
-        torchvision.utils.save_image(preds , f"{folder}/pred_{idx}.png")
-        
+        #torchvision.utils.save_image(y, f"{folder}{idx}.png")
+        #torchvision.utils.save_image(preds , f"{folder}/pred_{idx}.png")
+        #print(idx)
+        if idx == 1 or idx == 2 or idx == 4 or idx == 6 or idx == 8:
+            f, (ax2, ax3) = plt.subplots(1, 2, figsize=(10,20))
+            
+            ax2.imshow(preds[0].cpu().squeeze().numpy(), cmap = 'gray',label="Prediction")
+            ax3.imshow(y[0].squeeze(0), cmap= 'gray', label="Mask")
+            #plt.legend()
+            plt.show()
 
     model.train()

@@ -18,10 +18,10 @@ from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from testModel import UNet_MM
-from utils import DiceLoss, check_accuracy, save_predictions_as_imgs
+from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss
 
 # hyperparameters
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 100
@@ -48,20 +48,21 @@ def show_batch(dl):
         
 
 
-def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
+def train_model(model,loaders,optimizer,num_of_epochs):
     
     # iterate through the epochs
     for epoch in range(num_of_epochs):
         running_loss = 0.0
         epoch_loss = 0.0
         train_losses = []
+        train_accs = []
 
         # iterate through the batches
         for i, data in enumerate(loaders[0]):
 
             # put images into devices
             train_image, ground_truth = data[0].to(DEVICE), data[1].to(DEVICE)
-            optimizer.zero_grad()
+            
 
             # prediction
             out = model(train_image)
@@ -69,40 +70,31 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
             image = out.cpu().data.numpy()
             mask = ground_truth.cpu().data.numpy()
 
-            #image[image >= 0.7] = 1
-            #image[image < 0.7] = 0
-            
-
-            #f, axarr = plt.subplots(2,2)
-            #axarr[0,0].imshow(mask[0,0,:,:],cmap="gray",interpolation='nearest')
-            #axarr[0,1].imshow(image[0,0,:,:],cmap="gray",interpolation='nearest')
-            #plt.imshow(image[0,0,:,:], cmap="gray")
-            #plt.colorbar(label='intensity')
-            #plt.show()
-
-            #print(out.shape)
-
             # loss compared to actual
-            loss = loss_fn(out,ground_truth)
+            loss= calc_loss(out,ground_truth)
 
             train_losses.append(loss)
+            #train_accs.append(loss)
 
             # backward prop and optimize
             loss.backward()
             optimizer.step()
-            
+            optimizer.zero_grad()
 
             running_loss += loss.item()
         
         # test validation dataset after each epoch
-        check_accuracy(loaders[1], model, device=DEVICE)
+        # check_accuracy(loaders[1], model, device=DEVICE)
 
         # save images
-        save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
+        #
+        if epoch % 10 == 0:
+            save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
 
         train_loss = torch.stack(train_losses).mean().item()
+        #train_acc = torch.stack(train_accs).mean().item()
         #epoch_loss = running_loss / 100
-        print(f"Overall Epoch: {epoch} Train Loss: {train_loss}")
+        print(f"Overall Epoch: {epoch} Train Loss: {train_loss} Train Acc: ")
         running_loss = 0.0
 
             
@@ -140,8 +132,8 @@ if __name__ == '__main__':
     print(len(val_set))
 
     # need to figure out how to import the data without issues with masks etc
-    train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=True, pin_memory=True)
-    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
+    train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
+    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
 
     #print(train_dl['train'])
 
@@ -151,4 +143,4 @@ if __name__ == '__main__':
     loss_fn = nn.BCELoss() # use this due to model already having sigmoid
 
     #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,loss_fn)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,100)

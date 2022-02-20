@@ -27,6 +27,7 @@ class train_ISLES2018_loader(Dataset):
         super().__init__()
         
         self.samples = []
+        
 
         for case_name in os.listdir(file_dir):
             case_path = os.path.join(file_dir, case_name)
@@ -69,7 +70,14 @@ class train_ISLES2018_loader(Dataset):
                 gt_2d = gt_array[:,:,i].transpose((1,0))
 
                 gt_2d = np.uint8(gt_2d[None,:])
+
+                
+
+        
+                
                 gt_2d = torch.from_numpy(gt_2d)
+
+                
 
                 slices, gt_slice = self.transform(slices,gt_2d)
                 
@@ -98,7 +106,7 @@ class train_ISLES2018_loader(Dataset):
                 """
                 self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
         
-            
+        
         
                         
     def __getitem__(self, idx):

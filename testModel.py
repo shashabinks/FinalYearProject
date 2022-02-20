@@ -181,4 +181,4 @@ class UNet_MM(nn.Module):
         x = self.conv16(x)
         x = F.relu(self.norm16(x))
         
-        return torch.sigmoid(self.convEND(x)) 
+        return self.convEND(x)
