@@ -23,8 +23,15 @@ class DiceLoss(nn.Module):
         super(DiceLoss, self).__init__()
 
     def forward(self, inputs, targets, smooth=1):
+
+        
         
         inputs = inputs.view(-1)
+
+        
+
+
+
         targets = targets.view(-1)
         
         intersection = (inputs * targets).sum()                            
@@ -40,19 +47,38 @@ def check_accuracy(loader, model, device="cuda"):
 
     with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
         for x, y in loader:
+            #plt.imshow(y[0].squeeze(0), cmap="gray")
+            #plt.show()
             x = x.to(device)
-            y = y.to(device).unsqueeze(1)
-            preds = torch.sigmoid(model(x))
+            y = y.to(device)
+            
+            preds = model(x)
             preds = (preds > 0.5).float()
             num_correct += (preds == y).sum()
             num_pixels += torch.numel(preds)
-            dice_score += (2 * (preds * y).sum()) / (
-                (preds + y).sum() + 1e-8
-            )
+            dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)
 
     print(
         f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
     )
-    print(f"Dice score: {dice_score/len(loader)}")
+    print(f"Validation Dice score: {dice_score/len(loader)}")
+
+    model.train()
+
+def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda"):
+    model.eval()
+    for idx, (x, y) in enumerate(loader):
+        torchvision.utils.save_image(y, f"{folder}{idx}.png")
+        x = x.to(device=device)
+        with torch.no_grad():
+            preds = model(x)
+            preds = (preds > 0.5).float()
+        
+        #plt.imshow(y[0].squeeze(0), cmap="gray")
+        #plt.show()
+
+        #print(y[0].shape)
+        torchvision.utils.save_image(preds , f"{folder}/pred_{idx}.png")
+        
 
     model.train()

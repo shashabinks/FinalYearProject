@@ -230,6 +230,8 @@ class val_ISLES2018_loader(Dataset):
                 gt = TF.to_pil_image(gt_2d)
                 gt = TF.to_tensor(gt)
                 
+                #plt.imshow(gt.squeeze(0), cmap="gray")
+                #plt.show()
                 
 
                 combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set

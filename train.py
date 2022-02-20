@@ -18,7 +18,7 @@ from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from testModel import UNet_MM
-from utils import DiceLoss, check_accuracy
+from utils import DiceLoss, check_accuracy, save_predictions_as_imgs
 
 # hyperparameters
 LEARNING_RATE = 0.0001
@@ -93,10 +93,16 @@ def train_model(model,loaders,optimizer,num_of_epochs,loss_fn):
             
 
             running_loss += loss.item()
+        
+        # test validation dataset after each epoch
+        check_accuracy(loaders[1], model, device=DEVICE)
+
+        # save images
+        save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
 
         train_loss = torch.stack(train_losses).mean().item()
-        epoch_loss = running_loss / 100
-        print(f"Overall Epoch: {epoch} loss: {train_loss}")
+        #epoch_loss = running_loss / 100
+        print(f"Overall Epoch: {epoch} Train Loss: {train_loss}")
         running_loss = 0.0
 
             
@@ -134,15 +140,15 @@ if __name__ == '__main__':
     print(len(val_set))
 
     # need to figure out how to import the data without issues with masks etc
-    train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=4 ,shuffle=True, pin_memory=True)
-    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=4 ,shuffle=True, pin_memory=True)
+    train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=True, pin_memory=True)
+    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=2 ,shuffle=False, pin_memory=True)
 
     #print(train_dl['train'])
 
     optimizer = optim.Adam(unet_2d.parameters(), LEARNING_RATE)
     dsc_loss = DiceLoss()
 
-    loss_fn = nn.BCEWithLogitsLoss()
+    loss_fn = nn.BCELoss() # use this due to model already having sigmoid
 
     #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,500,loss_fn)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,100,loss_fn)
