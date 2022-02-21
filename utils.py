@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
-
+metrics = {}
 # calculate correlation between the pred image and the label
 class DiceLoss(nn.Module):
     def __init__(self, weight=None, size_average=True):
@@ -38,6 +38,18 @@ class DiceLoss(nn.Module):
         
         return loss.mean(),dice.mean() # output loss
 
+def dc_loss(inputs,targets,smooth=1.):
+    inputs = inputs.contiguous()
+
+    targets = targets.contiguous()
+    
+    intersection = (inputs * targets).sum(dim=2).sum(dim=2)                              
+    dice = (2.*intersection + smooth)/(inputs.sum(dim=2).sum(dim=2) + targets.sum(dim=2).sum(dim=2) + smooth)  
+
+    loss = 1 - dice
+    
+    return loss.mean(),dice.mean() # output loss
+
 def calc_loss(pred=None, target=None, bce_weight=0.5):
 
     bceweight = torch.ones_like(target)  +  20 * target
@@ -57,9 +69,9 @@ def calc_loss(pred=None, target=None, bce_weight=0.5):
 
 
 def check_accuracy(loader, model, device="cuda"):
-    num_correct = 0
-    num_pixels = 0
-    dice_score = 0
+    dice_scores = []
+    dice_loss = []
+    bce_loss = []
     model.eval()
 
     with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
@@ -70,15 +82,18 @@ def check_accuracy(loader, model, device="cuda"):
             y = y.to(device)
             
             preds = model(x)
-            preds = (preds > 0.5).float()
-            num_correct += (preds == y).sum()
-            num_pixels += torch.numel(preds)
-            dice_score += (2 * (preds * y).sum()) / ((preds + y).sum() + 1e-8)
+            preds = torch.sigmoid(preds)
+            
+            loss,coeff = dc_loss(preds,y)
+            dice_scores.append(coeff)
+            dice_loss.append(loss)
+    
+    overall_dsc = torch.stack(dice_scores).mean().item()
+    overall_loss = torch.stack(dice_loss).mean().item()
+    
+    print(f"Validation Loss: {overall_loss} Validation Acc: {overall_dsc}")
 
-    print(
-        f"Got {num_correct}/{num_pixels} with acc {num_correct/num_pixels*100:.2f}"
-    )
-    print(f"Validation Dice score: {dice_score/len(loader)}")
+    
 
     model.train()
 
@@ -89,9 +104,6 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
         x = x.to(device=device)
         with torch.no_grad():
             preds = torch.sigmoid(model(x))
-            
-
-            
         
         #plt.imshow(y[0].squeeze(0), cmap="gray")
         #plt.show()

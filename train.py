@@ -18,10 +18,10 @@ from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from testModel import UNet_MM
-from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss
+from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss, dc_loss
 
 # hyperparameters
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0005
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 100
@@ -30,6 +30,8 @@ IMAGE_HEIGHT = 256
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
 LOAD_MODEL = False
+
+total_train_loss = []
 
 def accuracy():
     pass
@@ -73,8 +75,11 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             # loss compared to actual
             loss= calc_loss(out,ground_truth)
 
+            _,dice_coeff = dc_loss(torch.sigmoid(out), ground_truth)
+            
+
             train_losses.append(loss)
-            #train_accs.append(loss)
+            train_accs.append(dice_coeff)
 
             # backward prop and optimize
             loss.backward()
@@ -84,17 +89,23 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             running_loss += loss.item()
         
         # test validation dataset after each epoch
-        # check_accuracy(loaders[1], model, device=DEVICE)
+        train_loss = torch.stack(train_losses).mean().item()
+
+        total_train_loss.append(train_loss)
+        train_acc = torch.stack(train_accs).mean().item()
+        
+        print(f"Overall Epoch: {epoch} Train Loss: {train_loss} Train Acc: {train_acc} ")
+        
+        check_accuracy(loaders[1], model, device=DEVICE)
 
         # save images
         #
         if epoch % 10 == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
+        
 
-        train_loss = torch.stack(train_losses).mean().item()
-        #train_acc = torch.stack(train_accs).mean().item()
-        #epoch_loss = running_loss / 100
-        print(f"Overall Epoch: {epoch} Train Loss: {train_loss} Train Acc: ")
+
+        
         running_loss = 0.0
 
             
@@ -133,7 +144,7 @@ if __name__ == '__main__':
 
     # need to figure out how to import the data without issues with masks etc
     train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
-    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
+    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
 
     #print(train_dl['train'])
 
@@ -143,4 +154,7 @@ if __name__ == '__main__':
     loss_fn = nn.BCELoss() # use this due to model already having sigmoid
 
     #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,100)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,51)
+
+    plt.plot(total_train_loss)
+    plt.show()
