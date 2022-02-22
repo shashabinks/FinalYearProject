@@ -81,20 +81,21 @@ def check_accuracy(loader, model, device="cuda"):
             x = x.to(device)
             y = y.to(device)
             
+            # loss
             preds = model(x)
-            preds = torch.sigmoid(preds)
-            
-            loss,coeff = dc_loss(preds,y)
-            dice_scores.append(coeff)
+            loss = calc_loss(preds, y)
             dice_loss.append(loss)
+
+            # dice score
+            preds = torch.sigmoid(preds)
+            _,coeff = dc_loss(preds,y) # change the loss to the weighted loss
+            dice_scores.append(coeff)
+            
     
     overall_dsc = torch.stack(dice_scores).mean().item()
     overall_loss = torch.stack(dice_loss).mean().item()
     
     print(f"Validation Loss: {overall_loss} Validation Acc: {overall_dsc}")
-
-    
-
     model.train()
 
 def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda"):

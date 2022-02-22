@@ -9,11 +9,11 @@ import torch.nn.functional as F
 import torch.optim as optim
 
 
-class UNet_MM(nn.Module):
+class UNet_2D(nn.Module):
     
     
     def __init__(self):
-        super(UNet_MM, self).__init__()
+        super(UNet_2D, self).__init__()
         # DOWN BLOCK 1 #
         self.conv1 = nn.Conv2d(5, 32, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(32)

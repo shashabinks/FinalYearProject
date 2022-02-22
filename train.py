@@ -17,11 +17,11 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from testModel import UNet_MM
+from testModel import UNet_2D
 from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss, dc_loss
 
 # hyperparameters
-LEARNING_RATE = 0.0005
+LEARNING_RATE = 0.01
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 100
@@ -73,9 +73,10 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             mask = ground_truth.cpu().data.numpy()
 
             # loss compared to actual
-            loss= calc_loss(out,ground_truth)
+            loss = calc_loss(out,ground_truth)
 
-            _,dice_coeff = dc_loss(torch.sigmoid(out), ground_truth)
+            out = torch.sigmoid(out)
+            _,dice_coeff = dc_loss(out, ground_truth)
             
 
             train_losses.append(loss)
@@ -90,9 +91,9 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         
         # test validation dataset after each epoch
         train_loss = torch.stack(train_losses).mean().item()
+        train_acc = torch.stack(train_accs).mean().item()
 
         total_train_loss.append(train_loss)
-        train_acc = torch.stack(train_accs).mean().item()
         
         print(f"Overall Epoch: {epoch} Train Loss: {train_loss} Train Acc: {train_acc} ")
         
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     #model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
     #in_channels=1, out_channels=1, init_features=32, pretrained=False)
 
-    unet_2d = UNet_MM() # make sure to change the number of channels in the unet model file
+    unet_2d = UNet_2D() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
