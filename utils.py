@@ -38,6 +38,7 @@ class DiceLoss(nn.Module):
         
         return loss.mean(),dice.mean() # output loss
 
+# calculate dice coefficient/loss
 def dc_loss(inputs,targets,smooth=1.):
     inputs = inputs.contiguous()
 
@@ -50,6 +51,8 @@ def dc_loss(inputs,targets,smooth=1.):
     
     return loss.mean(),dice.mean() # output loss
 
+
+# calculate weighted loss
 def calc_loss(pred=None, target=None, bce_weight=0.5):
 
     bceweight = torch.ones_like(target)  +  20 * target
@@ -59,15 +62,11 @@ def calc_loss(pred=None, target=None, bce_weight=0.5):
     dice_loss = DiceLoss()
     dice,dice_coeff = dice_loss(pred, target)
 
-    #print(f"Train Accuracy:{dice_coeff}")
-
     loss = bce * bce_weight + dice * (1 - bce_weight)
-    
-   
     
     return loss
 
-
+# evaluate validation set
 def check_accuracy(loader, model, device="cuda"):
     dice_scores = []
     dice_loss = []
@@ -76,8 +75,7 @@ def check_accuracy(loader, model, device="cuda"):
 
     with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
         for x, y in loader:
-            #plt.imshow(y[0].squeeze(0), cmap="gray")
-            #plt.show()
+            
             x = x.to(device)
             y = y.to(device)
             
@@ -92,7 +90,7 @@ def check_accuracy(loader, model, device="cuda"):
             dice_scores.append(coeff)
             
     
-    overall_dsc = torch.stack(dice_scores).mean().item()
+    overall_dsc = torch.stack(dice_scores).mean().item() # mean loss/dsc per batch
     overall_loss = torch.stack(dice_loss).mean().item()
     
     print(f"Validation Loss: {overall_loss} Validation Acc: {overall_dsc}")

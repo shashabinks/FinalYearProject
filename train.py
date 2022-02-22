@@ -17,15 +17,15 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from testModel import UNet_2D
+from unet_model import UNet_2D
 from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss, dc_loss
 
 # hyperparameters
-LEARNING_RATE = 0.01
+LEARNING_RATE = 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 100
-NUM_WORKERS = 2
+NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
@@ -69,12 +69,10 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             # prediction
             out = model(train_image)
 
-            image = out.cpu().data.numpy()
-            mask = ground_truth.cpu().data.numpy()
-
             # loss compared to actual
             loss = calc_loss(out,ground_truth)
 
+            # calculate dice coefficient
             out = torch.sigmoid(out)
             _,dice_coeff = dc_loss(out, ground_truth)
             
@@ -82,12 +80,14 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             train_losses.append(loss)
             train_accs.append(dice_coeff)
 
-            # backward prop and optimize
+            # backward prop and optimize network
             loss.backward()
             optimizer.step()
+
+            # reset gradients to zero in prep for next batch
             optimizer.zero_grad()
 
-            running_loss += loss.item()
+            #running_loss += loss.item()
         
         # test validation dataset after each epoch
         train_loss = torch.stack(train_losses).mean().item()
@@ -95,28 +95,22 @@ def train_model(model,loaders,optimizer,num_of_epochs):
 
         total_train_loss.append(train_loss)
         
-        print(f"Overall Epoch: {epoch} Train Loss: {train_loss} Train Acc: {train_acc} ")
+        print(f"Epoch: {epoch}")
+        print(f"Train Loss: {train_loss} Train Acc: {train_acc} ")
         
         check_accuracy(loaders[1], model, device=DEVICE)
 
-        # save images
-        #
-        if epoch % 10 == 0:
+        # view images after 100 epochs
+        if epoch % 25 == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
         
-
-
         
-        running_loss = 0.0
 
             
 
 
 if __name__ == '__main__':
     torch.cuda.empty_cache()
-
-    #model = torch.hub.load('mateuszbuda/brain-segmentation-pytorch', 'unet',
-    #in_channels=1, out_channels=1, init_features=32, pretrained=False)
 
     unet_2d = UNet_2D() # make sure to change the number of channels in the unet model file
     print(DEVICE)
@@ -137,9 +131,6 @@ if __name__ == '__main__':
     val_set = val_ISLES2018_loader(val_directory, modalities)
     print("Loaded Validation Data")
 
-
-    #train_set, val_set = random_split(train_dataset, (400,102))
-
     print(len(train_set))
     print(len(val_set))
 
@@ -150,12 +141,8 @@ if __name__ == '__main__':
     #print(train_dl['train'])
 
     optimizer = optim.Adam(unet_2d.parameters(), LEARNING_RATE)
-    dsc_loss = DiceLoss()
 
-    loss_fn = nn.BCELoss() # use this due to model already having sigmoid
-
-    #show_batch(train_dl)
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,51)
+    train_model(unet_2d, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
     plt.plot(total_train_loss)
     plt.show()
