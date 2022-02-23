@@ -56,17 +56,31 @@ class train_ISLES2018_loader(Dataset):
 
     def transform(self, slices, gt):
 
+        
+
         # convert each slice into a pil image
         for i in range(len(slices)):
             image = slices[i]
-            image = TF.to_pil_image(image)
+            
+            img_array = np.array(image).astype('float64')
+            img_2d = img_array[:,:].transpose((1,0))
+            img_2d = np.uint8(img_2d[None,:])
+            img_2d = torch.from_numpy(img_2d)
+
+            image = TF.to_pil_image(img_2d)
             slices[i] = image
-        
+
+        img_array = np.array(gt).astype('float64')
+        img_2d = img_array[:,:].transpose((1,0))
+        img_2d = np.uint8(img_2d[None,:])
+        gt = torch.from_numpy(img_2d)    
         gt = TF.to_pil_image(gt)
+
+
 
         resize = torchvision.transforms.Resize(size=(256, 256))
         image = resize(image)
-        gt=  resize(gt)
+        gt =  resize(gt)
         
     
         # flip horizontally randomly
@@ -151,11 +165,23 @@ class val_ISLES2018_loader(Dataset):
 
     def transform(self, slices, gt):
         # convert each slice into a pil image
+         # convert each slice into a pil image
         for i in range(len(slices)):
             image = slices[i]
-            image = TF.to_pil_image(image)
+            
+            img_array = np.array(image).astype('float64')
+            img_2d = img_array[:,:].transpose((1,0))
+            img_2d = np.uint8(img_2d[None,:])
+            img_2d = torch.from_numpy(img_2d)
+
+            image = TF.to_pil_image(img_2d)
             slices[i] = image
-        
+
+        img_array = np.array(gt).astype('float64')
+        img_2d = img_array[:,:].transpose((1,0))
+        img_2d = np.uint8(img_2d[None,:])
+        gt = torch.from_numpy(img_2d)
+            
         gt = TF.to_pil_image(gt)
 
         resize = torchvision.transforms.Resize(size=(256, 256))
@@ -174,7 +200,7 @@ class val_ISLES2018_loader(Dataset):
         return slices, gt
     
 
-def load_data(file_dir):
+def load_data(file_dir,modalities):
     dataset = [] 
 
     for case_name in os.listdir(file_dir):
@@ -195,24 +221,16 @@ def load_data(file_dir):
                     if modality != 'OT':                # ignore the ground truth
 
                         slice=case[modality].get_fdata()
-                        img_array = np.array(slice).astype('float64')
-                        img_2d = img_array[:,:,i].transpose((1,0))
-                        img_2d = np.uint8(img_2d[None,:])
-                        img_2d = torch.from_numpy(img_2d)
-                        slices.append(img_2d) # add the slice to the array
+                        
+                        slices.append(slice[:,:,i]) # add the slice to the array
                 
 
                 gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice).astype('float64')
-                gt_2d = gt_array[:,:,i].transpose((1,0))
-                gt_2d = np.uint8(gt_2d[None,:])
-                gt_2d = torch.from_numpy(gt_2d)
+              
 
-                
-
-                dataset.append((slices, gt_slice))  # append tuples of separate slices and ground truth masks, this makes it easier to later compare the pred/actual
             
-    print(len(dataset))
+                dataset.append((slices, gt_slice[:,:,i]))  # append tuples of separate slices and ground truth masks, this makes it easier to later compare the pred/actual
+            
     
     return dataset
 
@@ -221,9 +239,9 @@ def load_data(file_dir):
     
 
         
-directory = "ISLES/TRAINING"
-modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
-dataset = load_data(directory)
+#directory = "ISLES/TRAINING"
+#modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+#dataset = load_data(directory)
 #print(dataset.__len__())
 
 

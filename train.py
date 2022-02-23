@@ -4,7 +4,8 @@ import torchvision
 from torch.nn import functional as F
 from zmq import device
 from model import UNet
-from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
+#from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
+from slice_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import nibabel as nib
 import matplotlib.pyplot as plt
 import os
@@ -109,7 +110,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             
 
 
-def main():
+if __name__ == "__main__":
     torch.cuda.empty_cache()
 
     unet_2d = UNet_2D() # make sure to change the number of channels in the unet model file
@@ -125,10 +126,20 @@ def main():
 
     modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
 
+    ### NEW STUFF ###
+    directory = "ISLES/TRAINING"
+    dataset = load_data(directory, modalities)
+    
+    train_data, val_data = dataset[0:179], dataset[179 : ]
+
+    
+
+    #################
+
     # load our train and validation sets
-    train_set = train_ISLES2018_loader(train_directory, modalities)
+    train_set = train_ISLES2018_loader(train_data, modalities)
     print("Loaded Training Data")
-    val_set = val_ISLES2018_loader(val_directory, modalities)
+    val_set = val_ISLES2018_loader(val_data, modalities)
     print("Loaded Validation Data")
 
     print(len(train_set))
@@ -150,4 +161,3 @@ def main():
     plt.show()
 
 
-main()
