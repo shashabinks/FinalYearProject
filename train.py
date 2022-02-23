@@ -1,3 +1,4 @@
+import sklearn
 import torch
 import torch.nn as nn
 import torchvision
@@ -5,7 +6,7 @@ from torch.nn import functional as F
 from zmq import device
 from model import UNet
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
-from slice_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
+from case_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import nibabel as nib
 import matplotlib.pyplot as plt
 import os
@@ -13,6 +14,7 @@ import re
 import numpy as np
 import torchio as tio
 import torch
+from sklearn.model_selection import train_test_split
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision.utils import make_grid
@@ -128,9 +130,9 @@ if __name__ == "__main__":
 
     ### NEW STUFF ###
     directory = "ISLES/TRAINING"
-    dataset = load_data(directory, modalities)
-    
-    train_data, val_data = dataset[0:179], dataset[179 : ]
+    dataset = load_data(directory)
+
+    train_data,val_data = train_test_split(dataset, test_size=0.2, train_size=0.8, shuffle=True)
 
     
 

@@ -230,9 +230,9 @@ def load_data(file_dir):
     
 
         
-directory = "ISLES/TRAINING"
-modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
-dataset = load_data(directory)
+#directory = "ISLES/TRAINING"
+#modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+#dataset = load_data(directory)
 #print(dataset.__len__())
 
 

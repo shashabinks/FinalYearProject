@@ -63,7 +63,7 @@ class train_ISLES2018_loader(Dataset):
             image = slices[i]
             
             img_array = np.array(image).astype('float64')
-            img_2d = img_array[:,:].transpose((1,0))
+            img_2d = img_array.transpose((1,0))
             img_2d = np.uint8(img_2d[None,:])
             img_2d = torch.from_numpy(img_2d)
 
@@ -71,8 +71,8 @@ class train_ISLES2018_loader(Dataset):
             slices[i] = image
 
         img_array = np.array(gt).astype('float64')
-        img_2d = img_array[:,:].transpose((1,0))
-        img_2d = np.uint8(img_2d[None,:])
+        img_2d = img_array.transpose((1,0)) # swap dimensions
+        img_2d = np.uint8(img_2d[None,:]) 
         gt = torch.from_numpy(img_2d)    
         gt = TF.to_pil_image(gt)
 
@@ -170,7 +170,7 @@ class val_ISLES2018_loader(Dataset):
             image = slices[i]
             
             img_array = np.array(image).astype('float64')
-            img_2d = img_array[:,:].transpose((1,0))
+            img_2d = img_array.transpose((1,0))
             img_2d = np.uint8(img_2d[None,:])
             img_2d = torch.from_numpy(img_2d)
 
@@ -178,7 +178,7 @@ class val_ISLES2018_loader(Dataset):
             slices[i] = image
 
         img_array = np.array(gt).astype('float64')
-        img_2d = img_array[:,:].transpose((1,0))
+        img_2d = img_array.transpose((1,0))
         img_2d = np.uint8(img_2d[None,:])
         gt = torch.from_numpy(img_2d)
             
