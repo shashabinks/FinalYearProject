@@ -24,7 +24,7 @@ from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss,
 LEARNING_RATE = 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 100
+NUM_EPOCHS = 101
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -109,7 +109,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             
 
 
-if __name__ == '__main__':
+def main():
     torch.cuda.empty_cache()
 
     unet_2d = UNet_2D() # make sure to change the number of channels in the unet model file
@@ -145,4 +145,9 @@ if __name__ == '__main__':
     train_model(unet_2d, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
     plt.plot(total_train_loss)
+    plt.xlabel("Num of Epochs")
+    plt.ylabel("Training Loss")
     plt.show()
+
+
+main()
