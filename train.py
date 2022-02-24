@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from zmq import device
 from model import UNet
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
-from case_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
+from slice_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import nibabel as nib
 import matplotlib.pyplot as plt
 import os
@@ -24,10 +24,10 @@ from unet_model import UNet_2D
 from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss, dc_loss
 
 # hyperparameters
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 101
+NUM_EPOCHS = 201
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -104,7 +104,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         check_accuracy(loaders[1], model, device=DEVICE)
 
         # view images after 100 epochs
-        if epoch % 25 == 0:
+        if epoch % 200 == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
         
         
@@ -132,7 +132,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.2, train_size=0.8, shuffle=True)
+    train_data,val_data = train_test_split(dataset, test_size=0.25, train_size=0.75, shuffle=True)
 
     
 

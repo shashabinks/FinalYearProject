@@ -200,7 +200,7 @@ class val_ISLES2018_loader(Dataset):
         return slices, gt
     
 
-def load_data(file_dir,modalities):
+def load_data(file_dir,modalities=['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']):
     dataset = [] 
 
     for case_name in os.listdir(file_dir):

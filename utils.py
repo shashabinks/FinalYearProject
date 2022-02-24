@@ -55,8 +55,8 @@ def dc_loss(inputs,targets,smooth=1.):
 # calculate weighted loss
 def calc_loss(pred=None, target=None, bce_weight=0.5):
 
-    bceweight = torch.ones_like(target)  +  20 * target
-    bce = F.binary_cross_entropy_with_logits(pred, target, weight= bceweight)
+    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
+    bce = F.binary_cross_entropy_with_logits(pred, target, weight= bceweight) # the size of the lesions are small therefore it is important to use this
     
     pred = torch.sigmoid(pred)
     dice_loss = DiceLoss()
@@ -104,13 +104,6 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
         with torch.no_grad():
             preds = torch.sigmoid(model(x))
         
-        #plt.imshow(y[0].squeeze(0), cmap="gray")
-        #plt.show()
-
-        #print(y[0].shape)
-        #torchvision.utils.save_image(y, f"{folder}{idx}.png")
-        #torchvision.utils.save_image(preds , f"{folder}/pred_{idx}.png")
-        #print(idx)
         if idx == 1 or idx == 2 or idx == 4 or idx == 6 or idx == 8:
             f, (ax2, ax3) = plt.subplots(1, 2, figsize=(10,20))
             
