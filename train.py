@@ -6,9 +6,10 @@ from torch.nn import functional as F
 from zmq import device
 from model import UNet
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
-from slice_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
+from case_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import nibabel as nib
 import matplotlib.pyplot as plt
+from mm_unet import DMM_Unet
 import os
 import re
 import numpy as np
@@ -27,7 +28,7 @@ from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss,
 LEARNING_RATE = 1e-4
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 201
+NUM_EPOCHS = 51
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -104,7 +105,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         check_accuracy(loaders[1], model, device=DEVICE)
 
         # view images after 100 epochs
-        if epoch % 200 == 0:
+        if epoch % 10 == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
         
         
@@ -115,11 +116,11 @@ def train_model(model,loaders,optimizer,num_of_epochs):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    unet_2d = UNet_2D() # make sure to change the number of channels in the unet model file
+    model= DMM_Unet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
-    unet_2d.to(DEVICE)
+    model.to(DEVICE)
 
 
     # Need to consider splitting the training set manually
@@ -153,9 +154,9 @@ if __name__ == "__main__":
 
     #print(train_dl['train'])
 
-    optimizer = optim.Adam(unet_2d.parameters(), LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
 
-    train_model(unet_2d, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
+    train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
     plt.plot(total_train_loss)
     plt.xlabel("Num of Epochs")

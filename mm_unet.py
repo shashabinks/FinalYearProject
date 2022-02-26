@@ -75,7 +75,7 @@ class UpBlock2d(nn.Module):
 
 
 class DMM_Unet(nn.Module):
-    def __init__(self, in_channels, out_channels, num_of_features = 32):
+    def __init__(self, in_channels=1, out_channels=1, num_of_features = 32):
         super().__init__()
 
         self.in_dim = in_channels
@@ -219,7 +219,7 @@ class DMM_Unet(nn.Module):
                                  self.pool_1_2(down_1_2),
                                  self.pool_1_3(down_1_3)), dim=1)
 
-        print(input_2nd_0.shape)
+        #print(input_2nd_0.shape)
         # do the convolution
         down_2_0 = self.down_2_0(input_2nd_0)
         down_2_1 = self.down_2_1(input_2nd_1)
@@ -316,15 +316,15 @@ if __name__ == "__main__":
     num_classes = 1  # one hot
     initial_kernels = 32
 
-    net = DMM_Unet(1, num_classes, initial_kernels)
+    net = DMM_Unet(1, num_classes)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
 
-    print(CT.shape)
+    print("Input:", CT.shape)
     if torch.cuda.is_available():
         net = net.cuda()
-        MRI = CT.cuda()
+        CT = CT.cuda()
 
-    segmentation_prediction = net(MRI)
-    print(segmentation_prediction.shape)
+    segmentation_prediction = net(CT)
+    print("Output:",segmentation_prediction.shape)
