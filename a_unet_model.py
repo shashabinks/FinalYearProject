@@ -8,6 +8,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+# U-Net architecture with Attention Modules
 
 class UNet_2D(nn.Module):
     
