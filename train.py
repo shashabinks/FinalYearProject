@@ -133,7 +133,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=40)
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=10)
 
     
 

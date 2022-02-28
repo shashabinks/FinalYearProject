@@ -4,8 +4,6 @@ import torch.nn as nn
 import torchvision
 from torch.nn import functional as F
 from zmq import device
-from model import UNet
-
 import nibabel as nib
 import matplotlib.pyplot as plt
 import os

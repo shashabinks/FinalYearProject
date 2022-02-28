@@ -56,7 +56,7 @@ class train_ISLES2018_loader(Dataset):
 
     def transform(self, slices, gt):
 
-        
+        augment = True
 
         # convert each slice into a pil image
         for i in range(len(slices)):
@@ -82,34 +82,34 @@ class train_ISLES2018_loader(Dataset):
         image = resize(image)
         gt =  resize(gt)
         
-    
-        # flip horizontally randomly
-        if random.random() > 0.5:
-            for i in range(len(slices)):
-                image = slices[i]
-                image = TF.hflip(image)
-                slices[i] = image
+        if augment:
+            # flip horizontally randomly
+            if random.random() > 0.5:
+                for i in range(len(slices)):
+                    image = slices[i]
+                    image = TF.hflip(image)
+                    slices[i] = image
+                
+                gt = TF.hflip(gt)
             
-            gt = TF.hflip(gt)
-        
-        # flip vertically randomly
-        if random.random() > 0.5:
-            for i in range(len(slices)):
-                image = slices[i]
-                image = TF.vflip(image)
-                slices[i] = image
+            # flip vertically randomly
+            if random.random() > 0.5:
+                for i in range(len(slices)):
+                    image = slices[i]
+                    image = TF.vflip(image)
+                    slices[i] = image
+                
+                gt = TF.vflip(gt)
             
-            gt = TF.vflip(gt)
-        
-        # rotate at random
-        if random.random() > 0.5:
-            angle = random.randint(-30, 30)
-            for i in range(len(slices)):
-                image = slices[i]
-                image = TF.rotate(image, angle, fill=(0,))
-                slices[i] = image
-            
-            gt = TF.rotate(gt, angle, fill=(0,))
+            # rotate at random
+            if random.random() > 0.5:
+                angle = random.randint(-30, 30)
+                for i in range(len(slices)):
+                    image = slices[i]
+                    image = TF.rotate(image, angle, fill=(0,))
+                    slices[i] = image
+                
+                gt = TF.rotate(gt, angle, fill=(0,))
 
         # convert back to tensor/normalize
         for i in range(len(slices)):
