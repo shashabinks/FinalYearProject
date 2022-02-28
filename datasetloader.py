@@ -129,7 +129,7 @@ class train_ISLES2018_loader(Dataset):
         image = resize(image)
         gt=  resize(gt)
         
-    
+        
         # flip horizontally randomly
         if random.random() > 0.5:
             for i in range(len(slices)):

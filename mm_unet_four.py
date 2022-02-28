@@ -77,7 +77,7 @@ class UpBlock2d(nn.Module):
         return x
 
 
-class DMM_Unet(nn.Module):
+class DMM_Unet_4(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, num_of_features = 32):
         super().__init__()
 
@@ -94,69 +94,58 @@ class DMM_Unet(nn.Module):
         self.down_1_0 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_0 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_2_0 = ConvBlock2d(self.out_dim * 5, self.out_dim * 2)
+        self.down_2_0 = ConvBlock2d(self.out_dim * 4, self.out_dim * 2)
         self.pool_2_0 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_3_0 = ConvBlock2d(self.out_dim * 15, self.out_dim * 4)
+        self.down_3_0 = ConvBlock2d(self.out_dim * 12, self.out_dim * 4)
         self.pool_3_0 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_4_0 = ConvBlock2d(self.out_dim * 35, self.out_dim * 8)
+        self.down_4_0 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_0 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Encoder ~ M2 ~ CT_CBV
         self.down_1_1 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_2_1 = ConvBlock2d(self.out_dim * 5, self.out_dim * 2)
+        self.down_2_1 = ConvBlock2d(self.out_dim * 4, self.out_dim * 2)
         self.pool_2_1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_3_1 = ConvBlock2d(self.out_dim * 15, self.out_dim * 4)
+        self.down_3_1 = ConvBlock2d(self.out_dim * 12, self.out_dim * 4)
         self.pool_3_1 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.down_4_1 = ConvBlock2d(self.out_dim * 35, self.out_dim * 8)
+        self.down_4_1 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Encoder ~ M3 ~ CT_CBF
         self.down_1_2 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_2_2 = ConvBlock2d(self.out_dim * 5, self.out_dim * 2)
+        self.down_2_2 = ConvBlock2d(self.out_dim * 4, self.out_dim * 2)
         self.pool_2_2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_3_2 = ConvBlock2d(self.out_dim * 15, self.out_dim * 4)
+        self.down_3_2 = ConvBlock2d(self.out_dim * 12, self.out_dim * 4)
         self.pool_3_2 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.down_4_2 = ConvBlock2d(self.out_dim * 35, self.out_dim * 8)
+        self.down_4_2 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # Encoder ~ M4 ~ CT_Tmax
         self.down_1_3 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_3 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_2_3 = ConvBlock2d(self.out_dim * 5, self.out_dim * 2)
+        self.down_2_3 = ConvBlock2d(self.out_dim * 4, self.out_dim * 2)
         self.pool_2_3 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        self.down_3_3 = ConvBlock2d(self.out_dim * 15, self.out_dim * 4)
+        self.down_3_3 = ConvBlock2d(self.out_dim * 12, self.out_dim * 4)
         self.pool_3_3 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.down_4_3 = ConvBlock2d(self.out_dim * 35, self.out_dim * 8)
+        self.down_4_3 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_3 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # Encoder ~ M5 ~ CT_MTT
-        self.down_1_4 = ConvBlock2d(self.in_dim, self.out_dim)
-        self.pool_1_4 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        self.down_2_4 = ConvBlock2d(self.out_dim * 5, self.out_dim * 2)
-        self.pool_2_4 = nn.MaxPool2d(kernel_size=2, stride=2)
-
-        self.down_3_4 = ConvBlock2d(self.out_dim * 15, self.out_dim * 4)
-        self.pool_3_4 = nn.MaxPool2d(kernel_size=2, stride=2)
         
-        self.down_4_4 = ConvBlock2d(self.out_dim * 35, self.out_dim * 8)
-        self.pool_4_4 = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # ~~~ BRIDGE ~~~ #
-        self.bridge = ConvBlock2d(self.out_dim * 75, self.out_dim * 16 )
+        self.bridge = ConvBlock2d(self.out_dim * 60, self.out_dim * 16 )
 
         # ~~~ DECODER PATH ~~~ #
         self.upLayer1 = UpBlock2d(self.out_dim * 16, self.out_dim * 8)
@@ -177,7 +166,7 @@ class DMM_Unet(nn.Module):
         m2 = input[:,1:2,:,:]
         m3 = input[:,2:3,:,:]
         m4 = input[:,3:4,:,:]
-        m5 = input[:,4:5,:,:]
+        
 
 
         # ~~~ ENCODING ~~~ #
@@ -186,7 +175,7 @@ class DMM_Unet(nn.Module):
         down_1_1 = self.down_1_1(m2)
         down_1_2 = self.down_1_2(m3)
         down_1_3 = self.down_1_3(m4)
-        down_1_4 = self.down_1_4(m5)
+        
 
 
         # ~~~ L2 ~~~ #
@@ -195,32 +184,24 @@ class DMM_Unet(nn.Module):
         input_2nd_0 = torch.cat((self.pool_1_0(down_1_0),
                                  self.pool_1_1(down_1_1),
                                  self.pool_1_2(down_1_2),
-                                 self.pool_1_3(down_1_3),
-                                 self.pool_1_4(down_1_4)), dim=1)
+                                 self.pool_1_3(down_1_3)), dim=1)
 
         input_2nd_1 = torch.cat((self.pool_1_1(down_1_1),
                                  self.pool_1_2(down_1_2),
                                  self.pool_1_3(down_1_3),
-                                 self.pool_1_4(down_1_4),
                                  self.pool_1_0(down_1_0)), dim=1)
 
         input_2nd_2 = torch.cat((self.pool_1_2(down_1_2),
                                  self.pool_1_3(down_1_3),
-                                 self.pool_1_4(down_1_4),
                                  self.pool_1_0(down_1_0),
                                  self.pool_1_1(down_1_1)), dim=1)
 
         input_2nd_3 = torch.cat((self.pool_1_3(down_1_3),
-                                 self.pool_1_4(down_1_4),
                                  self.pool_1_0(down_1_0),
                                  self.pool_1_1(down_1_1),
                                  self.pool_1_2(down_1_2)), dim=1)
         
-        input_2nd_4 = torch.cat((self.pool_1_4(down_1_4),
-                                 self.pool_1_0(down_1_0),
-                                 self.pool_1_1(down_1_1),
-                                 self.pool_1_2(down_1_2),
-                                 self.pool_1_3(down_1_3)), dim=1)
+        
 
         #print(input_2nd_0.shape)
         # do the convolution
@@ -228,7 +209,7 @@ class DMM_Unet(nn.Module):
         down_2_1 = self.down_2_1(input_2nd_1)
         down_2_2 = self.down_2_2(input_2nd_2)
         down_2_3 = self.down_2_3(input_2nd_3)
-        down_2_4 = self.down_2_4(input_2nd_4)
+        
 
         
         # ~~~ L3 ~~~ #
@@ -236,56 +217,54 @@ class DMM_Unet(nn.Module):
         down_2_1m = self.pool_2_0(down_2_1)
         down_2_2m = self.pool_2_0(down_2_2)
         down_2_3m = self.pool_2_0(down_2_3)
-        down_2_4m = self.pool_2_0(down_2_4)
+        
 
-        input_3rd_0 = torch.cat((down_2_0m, down_2_1m, down_2_2m, down_2_3m,down_2_4m), dim=1)
+        input_3rd_0 = torch.cat((down_2_0m, down_2_1m, down_2_2m, down_2_3m), dim=1)
         input_3rd_0 = torch.cat((input_3rd_0, croppCenter(input_2nd_0, input_3rd_0.shape)), dim=1)
 
-        input_3rd_1 = torch.cat((down_2_1m, down_2_2m, down_2_3m, down_2_4m, down_2_0m), dim=1)
+        input_3rd_1 = torch.cat((down_2_1m, down_2_2m, down_2_3m,down_2_0m), dim=1)
         input_3rd_1 = torch.cat((input_3rd_1, croppCenter(input_2nd_1, input_3rd_1.shape)), dim=1)
 
-        input_3rd_2 = torch.cat((down_2_2m, down_2_3m,down_2_4m, down_2_0m, down_2_1m), dim=1)
+        input_3rd_2 = torch.cat((down_2_2m, down_2_3m,down_2_0m, down_2_1m), dim=1)
         input_3rd_2 = torch.cat((input_3rd_2, croppCenter(input_2nd_2, input_3rd_2.shape)), dim=1)
 
-        input_3rd_3 = torch.cat((down_2_3m,down_2_4m, down_2_0m, down_2_1m, down_2_2m), dim=1)
+        input_3rd_3 = torch.cat((down_2_3m,down_2_0m, down_2_1m, down_2_2m), dim=1)
         input_3rd_3 = torch.cat((input_3rd_3, croppCenter(input_2nd_3, input_3rd_3.shape)), dim=1)
 
-        input_3rd_4 = torch.cat((down_2_4m, down_2_0m, down_2_1m, down_2_2m, down_2_3m), dim=1)
-        input_3rd_4 = torch.cat((input_3rd_4, croppCenter(input_2nd_4, input_3rd_4.shape)), dim=1)
+        
 
         down_3_0 = self.down_3_0(input_3rd_0)
         down_3_1 = self.down_3_1(input_3rd_1)
         down_3_2 = self.down_3_2(input_3rd_2)
         down_3_3 = self.down_3_3(input_3rd_3)
-        down_3_4 = self.down_3_4(input_3rd_4)
+        
 
         # ~~~ L4 ~~~ #
         down_3_0m = self.pool_2_0(down_3_0)
         down_3_1m = self.pool_2_0(down_3_1)
         down_3_2m = self.pool_2_0(down_3_2)
         down_3_3m = self.pool_2_0(down_3_3)
-        down_3_4m = self.pool_2_0(down_3_4)
+        
 
-        input_4th_0 = torch.cat((down_3_0m, down_3_1m, down_3_2m, down_3_3m,down_3_4m), dim=1)
+        input_4th_0 = torch.cat((down_3_0m, down_3_1m, down_3_2m, down_3_3m), dim=1)
         input_4th_0 = torch.cat((input_4th_0, croppCenter(input_3rd_0, input_4th_0.shape)), dim=1)
 
-        input_4th_1 = torch.cat((down_3_1m, down_3_2m, down_3_3m, down_3_4m, down_3_0m), dim=1)
+        input_4th_1 = torch.cat((down_3_1m, down_3_2m, down_3_3m, down_3_0m), dim=1)
         input_4th_1 = torch.cat((input_4th_1, croppCenter(input_3rd_1, input_4th_1.shape)), dim=1)
 
-        input_4th_2 = torch.cat((down_3_2m, down_3_3m,down_3_4m, down_3_0m, down_3_1m), dim=1)
+        input_4th_2 = torch.cat((down_3_2m, down_3_3m, down_3_0m, down_3_1m), dim=1)
         input_4th_2 = torch.cat((input_4th_2, croppCenter(input_3rd_2, input_4th_2.shape)), dim=1)
 
-        input_4th_3 = torch.cat((down_3_3m,down_3_4m, down_3_0m, down_3_1m, down_3_2m), dim=1)
+        input_4th_3 = torch.cat((down_3_3m, down_3_0m, down_3_1m, down_3_2m), dim=1)
         input_4th_3 = torch.cat((input_4th_3, croppCenter(input_3rd_3, input_4th_3.shape)), dim=1)
 
-        input_4th_4 = torch.cat((down_3_4m, down_3_0m, down_3_1m, down_3_2m, down_3_3m), dim=1)
-        input_4th_4 = torch.cat((input_4th_4, croppCenter(input_3rd_4, input_4th_4.shape)), dim=1)
+        
 
         down_4_0 = self.down_4_0(input_4th_0)
         down_4_1 = self.down_4_1(input_4th_1)
         down_4_2 = self.down_4_2(input_4th_2)
         down_4_3 = self.down_4_3(input_4th_3)
-        down_4_4 = self.down_4_4(input_4th_4)
+        
 
         
         # ~~~ BRIDGE ~~~ #
@@ -293,18 +272,18 @@ class DMM_Unet(nn.Module):
         down_4_1m = self.pool_4_0(down_4_1)
         down_4_2m = self.pool_4_0(down_4_2)
         down_4_3m = self.pool_4_0(down_4_3)
-        down_4_4m = self.pool_4_0(down_4_4)
+        
 
-        inputBridge = torch.cat((down_4_0m, down_4_1m, down_4_2m, down_4_3m, down_4_4m), dim=1)
+        inputBridge = torch.cat((down_4_0m, down_4_1m, down_4_2m, down_4_3m), dim=1)
         inputBridge = torch.cat((inputBridge, croppCenter(input_4th_0, inputBridge.shape)), dim=1)
 
         bridge = self.bridge(inputBridge)
 
         # ~~~~~~ Decoding path ~~~~~~~  #
-        skip_1 = (down_4_0 + down_4_1 + down_4_2 + down_4_3 + down_4_4) / 5.0  # most bottom one
-        skip_2 = (down_3_0 + down_3_1 + down_3_2 + down_3_3 + down_3_4) / 5.0
-        skip_3 = (down_2_0 + down_2_1 + down_2_2 + down_2_3 + down_2_4) / 5.0
-        skip_4 = (down_1_0 + down_1_1 + down_1_2 + down_1_3 + down_1_4) / 5.0      # top one
+        skip_1 = (down_4_0 + down_4_1 + down_4_2 + down_4_3) / 4.0  # most bottom one
+        skip_2 = (down_3_0 + down_3_1 + down_3_2 + down_3_3) / 4.0
+        skip_3 = (down_2_0 + down_2_1 + down_2_2 + down_2_3) / 4.0
+        skip_4 = (down_1_0 + down_1_1 + down_1_2 + down_1_3) / 4.0      # top one
 
 
         x = self.upLayer1(bridge, skip_1)
@@ -319,10 +298,10 @@ if __name__ == "__main__":
     num_classes = 1  # one hot
     initial_kernels = 32
 
-    net = DMM_Unet(1, num_classes)
+    net = DMM_Unet_4(1, num_classes)
     
     # torch.save(net.state_dict(), 'model.pth')
-    CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
+    CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
 
     print("Input:", CT.shape)
     if torch.cuda.is_available():
