@@ -21,6 +21,7 @@ from models.unet_model import UNet_2D
 from models.a_unet_model import UNet_Attention
 from models.mm_unet_four import DMM_Unet_4
 from models.mm_unet import DMM_Unet
+from models.mult_res_unet import MultiResNet
 
 # hyperparameters
 LEARNING_RATE = 5e-4
@@ -114,7 +115,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = UNet_Attention() # make sure to change the number of channels in the unet model file
+    model = MultiResNet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -131,7 +132,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=70)
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=75)
 
     
 
@@ -150,7 +151,6 @@ if __name__ == "__main__":
     train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
     valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
 
-    #print(train_dl['train'])
 
     optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
 

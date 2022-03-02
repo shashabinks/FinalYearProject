@@ -129,12 +129,12 @@ def weights_init_normal(m):
 
 class MultiResNet(nn.Module):
    
-    def __init__(self, n_classes=5, in_channel=1):
+    def __init__(self, n_classes=1, in_channel=5):
        super(MultiResNet, self).__init__()
        
        f=32
        filters = [f, f*2, f*4, f*8, f*16]
-       #filters_m = [self.channelcalc(i) for i in filters]
+       
 
        self.mresblock1 = MultiResBlock(in_channel,filters[0])
        self.maxpool1 = nn.MaxPool2d(kernel_size=2)
