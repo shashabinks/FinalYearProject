@@ -25,7 +25,7 @@ import random
 
 # TODO: Add a much simpler way to split the dataset, i.e. store all the images in a dictionary of lists' and 
 # split the list accordingly using only simple list partioning (maybe look into other ways later)
-# 
+
 
 
 # 5-Channel Loader
@@ -83,6 +83,7 @@ class train_ISLES2018_loader(Dataset):
         gt =  resize(gt)
         
         if augment:
+
             # flip horizontally randomly
             if random.random() > 0.5:
                 for i in range(len(slices)):

@@ -50,6 +50,7 @@ def dc_loss(inputs,targets,smooth=1.):
     return loss.mean(),dice.mean() # output loss
 
 
+# separate this bit and move the dc loss function into the train.py file...
 # calculate weighted loss
 def calc_loss(pred=None, target=None, bce_weight=0.5):
 
