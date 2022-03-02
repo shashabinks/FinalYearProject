@@ -1,3 +1,4 @@
+from collections import defaultdict
 import torch
 import torch.nn as nn
 import torchvision
@@ -14,7 +15,7 @@ import torch.nn.functional as F
 from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from utils import DiceLoss, check_accuracy, save_predictions_as_imgs, calc_loss, dc_loss
+from utils import save_predictions_as_imgs
 
 # MODELS
 from models.unet_model import UNet_2D
@@ -35,6 +36,8 @@ PIN_MEMORY = True
 LOAD_MODEL = False
 
 total_train_loss = []
+
+metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[]}
 
 def accuracy():
     pass
@@ -61,25 +64,32 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         epoch_loss = 0.0
         train_losses = []
         train_accs = []
+        train_bce = []
 
         # iterate through the batches
         for i, data in enumerate(loaders[0]):
-
+            
+            epoch_samples = 0
+            curr_metrics = defaultdict
             # put images into devices
             train_image, ground_truth = data[0].to(DEVICE), data[1].to(DEVICE)
-            
 
+            epoch_samples += train_image.size(0) # batch num
+            
             # prediction
             out = model(train_image)
 
             # loss compared to actual
             loss = calc_loss(out,ground_truth)
 
+            bce_val = calc_bce(out,ground_truth)
+
             # calculate dice coefficient
             out = torch.sigmoid(out)
             _,dice_coeff = dc_loss(out, ground_truth)
             
 
+            train_bce.append(bce_val)
             train_losses.append(loss)
             train_accs.append(dice_coeff)
 
@@ -95,11 +105,14 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         # test validation dataset after each epoch
         train_loss = torch.stack(train_losses).mean().item()
         train_acc = torch.stack(train_accs).mean().item()
+        train_bce = torch.stack(train_bce).mean().item()
 
-        total_train_loss.append(train_loss)
+        metrics["train_loss"].append(train_loss)
+        metrics["train_dice"].append(train_acc)
+        metrics["train_bce"].append(train_bce)
         
         print(f"Epoch: {epoch}")
-        print(f"Train Loss: {train_loss} Train Acc: {train_acc} ")
+        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce}")
         
         check_accuracy(loaders[1], model, device=DEVICE)
 
@@ -108,7 +121,83 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
         
         
+# calculate dice coefficient/loss
+def dc_loss(inputs,targets,smooth=1.):
+    inputs = inputs.contiguous()
 
+    targets = targets.contiguous()
+    
+    intersection = (inputs * targets).sum(dim=2).sum(dim=2)                              
+    dice = (2.*intersection + smooth)/(inputs.sum(dim=2).sum(dim=2) + targets.sum(dim=2).sum(dim=2) + smooth)  
+
+    loss = 1 - dice
+    
+    return loss.mean(),dice.mean() # output loss
+
+
+def calc_bce(pred=None, target=None):
+    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
+    bce = F.binary_cross_entropy_with_logits(pred, target, weight = bceweight) # the size of the lesions are small therefore it is important to use this
+
+    return bce
+
+# separate this bit and move the dc loss function into the train.py file...
+# calculate weighted loss
+def calc_loss(pred=None, target=None):
+
+    bce_weight = 0.5
+    bce = calc_bce(pred,target)
+    
+    pred = torch.sigmoid(pred)
+    
+    
+    dice,_ = dc_loss(pred, target)
+
+    loss = bce * bce_weight + dice * (1 - bce_weight)
+    
+    return loss
+
+# evaluate validation set
+def check_accuracy(loader, model, device="cuda"):
+    val_losses = []
+    val_dice = []
+    val_bce = []
+
+    model.eval()
+
+    with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
+        for x, y in loader:
+            
+            x = x.to(device)
+            y = y.to(device)
+
+            pred = model(x)
+
+            # bce
+            bce_val = calc_bce(pred,y)
+            val_bce.append(bce_val)
+
+            # loss
+            loss = calc_loss(pred, y)
+            val_losses.append(loss)
+
+            # dice score
+            pred = torch.sigmoid(pred)
+            _,coeff = dc_loss(pred,y) # change the loss to the weighted loss
+            val_dice.append(coeff)
+            
+    
+    overall_dsc = torch.stack(val_dice).mean().item() # mean loss/dsc per batch
+    overall_loss = torch.stack(val_losses).mean().item()
+    overall_bce  = torch.stack(val_bce).mean().item()
+
+    metrics["val_loss"].append(overall_loss)
+    metrics["val_dice"].append(overall_dsc)
+    metrics["val_bce"].append(overall_bce)
+    
+    print(f"Validation Loss: {overall_loss} Validation Dice Score: {overall_dsc} Validation BCE: {overall_bce}")
+    
+    model.train()
             
 
 
@@ -132,7 +221,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=75)
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=1337)
 
     
 
@@ -156,9 +245,11 @@ if __name__ == "__main__":
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
-    plt.plot(total_train_loss)
+    plt.plot(metrics["train_bce"], label="training bce loss")
+    plt.plot(metrics["val_bce"], label="validation bce loss")
     plt.xlabel("Num of Epochs")
-    plt.ylabel("Training Loss")
+    plt.ylabel("")
+    plt.legend()
     plt.show()
 
 
