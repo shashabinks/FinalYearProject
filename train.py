@@ -25,7 +25,7 @@ from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
 
 # hyperparameters
-LEARNING_RATE = 5e-4
+LEARNING_RATE = 1e-2
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 51
@@ -35,7 +35,6 @@ IMAGE_WIDTH = 256
 PIN_MEMORY = True
 LOAD_MODEL = False
 
-total_train_loss = []
 
 metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[]}
 
@@ -71,6 +70,9 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             # put images into devices
             train_image, ground_truth = data[0].to(DEVICE), data[1].to(DEVICE)
 
+            # reset gradients to zero in prep for next batch
+            optimizer.zero_grad()
+    
             epoch_samples += train_image.size(0) # batch num
             
             # prediction
@@ -78,20 +80,13 @@ def train_model(model,loaders,optimizer,num_of_epochs):
 
             # loss compared to actual
             loss = calc_loss(out,ground_truth, curr_metrics)
-            
-
-            #train_bce.append(bce_val)
-            #train_losses.append(loss)
-            #train_accs.append(dice_coeff)
 
             # backward prop and optimize network
             loss.backward()
             optimizer.step()
 
-            # reset gradients to zero in prep for next batch
-            optimizer.zero_grad()
+           
 
-            #running_loss += loss.item()
         
         # test validation dataset after each epoch
         train_loss = curr_metrics['loss'] / epoch_samples
@@ -108,7 +103,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         check_accuracy(loaders[1], model, device=DEVICE)
 
         # view images after 100 epochs
-        if epoch % 25 == 0:
+        if epoch % NUM_EPOCHS+1 == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
         
         
@@ -150,7 +145,7 @@ def calc_loss(pred, target, curr_metrics):
     curr_metrics['dice_coeff'] += dice_coeff.data.cpu().numpy() * target.size(0)
     curr_metrics['loss'] += loss.data.cpu().numpy() * target.size(0)
     
-    return loss
+    return bce
 
 # evaluate validation set
 def check_accuracy(loader, model, device="cuda"):
@@ -190,7 +185,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = MultiResNet() # make sure to change the number of channels in the unet model file
+    model = UNet_2D() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
