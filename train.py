@@ -16,6 +16,7 @@ from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from utils import save_predictions_as_imgs
+from torch.optim.lr_scheduler import StepLR
 
 # MODELS
 from models.unet_model import UNet_2D
@@ -25,10 +26,10 @@ from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
 
 # hyperparameters
-LEARNING_RATE = 1e-2
+LEARNING_RATE = 2e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 51
+NUM_EPOCHS = 101
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -55,10 +56,10 @@ def show_batch(dl):
         
 
 
-def train_model(model,loaders,optimizer,num_of_epochs):
+def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
     
     # iterate through the epochs
-    for epoch in range(num_of_epochs):
+    for epoch in range(0,num_of_epochs):
 
         epoch_samples = 0
         curr_metrics = defaultdict(float)
@@ -85,7 +86,6 @@ def train_model(model,loaders,optimizer,num_of_epochs):
             loss.backward()
             optimizer.step()
 
-           
 
         
         # test validation dataset after each epoch
@@ -103,7 +103,7 @@ def train_model(model,loaders,optimizer,num_of_epochs):
         check_accuracy(loaders[1], model, device=DEVICE)
 
         # view images after 100 epochs
-        if epoch % NUM_EPOCHS+1 == 0:
+        if epoch % (NUM_EPOCHS-1) == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
         
         
@@ -185,7 +185,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = UNet_2D() # make sure to change the number of channels in the unet model file
+    model = DMM_Unet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -223,13 +223,23 @@ if __name__ == "__main__":
 
 
     optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
+    scheduler = StepLR(optimizer, step_size=8, gamma=0.3)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
-    plt.plot(metrics["train_bce"], label="training bce loss")
-    plt.plot(metrics["val_bce"], label="validation bce loss")
+    plt.plot(metrics["train_loss"], label="training bce loss")
+    plt.plot(metrics["val_loss"], label="validation bce loss")
     plt.xlabel("Num of Epochs")
     plt.ylabel("")
+    plt.legend()
+
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+    
+    ax1.plot(metrics["train_loss"],label="training bce loss")
+    ax1.plot(metrics["val_loss"], label="validation bce loss")
+
+    ax2.plot(metrics["train_dice"],label="training dice")
+    ax2.plot(metrics["val_dice"], label="validation dice")
     plt.legend()
     plt.show()
 
