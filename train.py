@@ -20,16 +20,16 @@ from torch.optim.lr_scheduler import StepLR
 
 # MODELS
 from models.unet_model import UNet_2D
-from models.a_unet_model import UNet_Attention
+from models.a_unet_model import Attention_block, UNet_Attention
 from models.mm_unet_four import DMM_Unet_4
 from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
 
 # hyperparameters
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 101
+NUM_EPOCHS = 301
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -122,7 +122,7 @@ def dc_loss(inputs,targets,smooth=1.):
 
 
 def calc_bce(pred=None, target=None):
-    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
+    bceweight = torch.ones_like(target)  +  25 * target # create a weight for the bce that correlates to the size of the lesion
     bce = F.binary_cross_entropy_with_logits(pred, target, weight = bceweight) # the size of the lesions are small therefore it is important to use this
 
     return bce
@@ -185,7 +185,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = DMM_Unet() # make sure to change the number of channels in the unet model file
+    model = MultiResNet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
 
-    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other images
 
     ### NEW STUFF ###
     directory = "ISLES/TRAINING"
@@ -227,19 +227,24 @@ if __name__ == "__main__":
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
-    plt.plot(metrics["train_loss"], label="training bce loss")
-    plt.plot(metrics["val_loss"], label="validation bce loss")
-    plt.xlabel("Num of Epochs")
-    plt.ylabel("")
-    plt.legend()
+    #plt.plot(metrics["train_loss"], label="training bce loss")
+    #plt.plot(metrics["val_loss"], label="validation bce loss")
+    #plt.xlabel("Num of Epochs")
+    #plt.ylabel("")
+    #plt.legend()
 
     fig, (ax1, ax2) = plt.subplots(1, 2)
     
     ax1.plot(metrics["train_loss"],label="training bce loss")
     ax1.plot(metrics["val_loss"], label="validation bce loss")
-
+    ax1.set_title("Loss")
+    ax1.legend(loc="upper right")
+    
     ax2.plot(metrics["train_dice"],label="training dice")
     ax2.plot(metrics["val_dice"], label="validation dice")
+    ax2.set_title("Dice Score")
+    ax2.legend(loc="upper right")
+
     plt.legend()
     plt.show()
 
