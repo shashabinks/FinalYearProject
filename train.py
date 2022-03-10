@@ -122,7 +122,7 @@ def dc_loss(inputs,targets,smooth=1.):
 
 
 def calc_bce(pred=None, target=None):
-    bceweight = torch.ones_like(target)  +  25 * target # create a weight for the bce that correlates to the size of the lesion
+    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
     bce = F.binary_cross_entropy_with_logits(pred, target, weight = bceweight) # the size of the lesions are small therefore it is important to use this
 
     return bce
@@ -196,7 +196,7 @@ if __name__ == "__main__":
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
 
-    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other images
+    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
 
     ### NEW STUFF ###
     directory = "ISLES/TRAINING"
