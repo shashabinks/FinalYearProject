@@ -24,12 +24,13 @@ from models.a_unet_model import Attention_block, UNet_Attention
 from models.mm_unet_four import DMM_Unet_4
 from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
+from models.pa_unet import FPA_Unet
 
 # hyperparameters
 LEARNING_RATE = 1e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 301
+NUM_EPOCHS = 300+1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -185,7 +186,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = MultiResNet() # make sure to change the number of channels in the unet model file
+    model = FPA_Unet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -202,7 +203,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=1337)
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=23) # 1337 before
 
     
 
