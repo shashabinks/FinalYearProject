@@ -54,7 +54,7 @@ def dc_loss(inputs,targets,smooth=1.):
 # calculate weighted loss
 def calc_loss(pred=None, target=None, bce_weight=0.5):
 
-    bceweight = torch.ones_like(target)  +  25 * target # create a weight for the bce that correlates to the size of the lesion
+    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
     bce = F.binary_cross_entropy_with_logits(pred, target, weight= bceweight) # the size of the lesions are small therefore it is important to use this
     
     pred = torch.sigmoid(pred)

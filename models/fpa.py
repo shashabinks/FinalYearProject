@@ -10,7 +10,7 @@ import torch.optim as optim
 
 
 class FPA(nn.Module):
-    def __init__(self, channels=2048):
+    def __init__(self, channels=512):
         """
         Feature Pyramid Attention
         :type channels: int

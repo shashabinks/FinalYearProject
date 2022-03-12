@@ -7,13 +7,13 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from .fpa import FPA
+from .pyramidpool import PSPModule
 
-class FPA_Unet(nn.Module):
+class PP_Unet(nn.Module):
     
     
     def __init__(self):
-        super(FPA_Unet, self).__init__()
+        super(PP_Unet, self).__init__()
         # DOWN BLOCK 1 #
         self.conv1 = nn.Conv2d(5, 32, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(32)
@@ -52,8 +52,8 @@ class FPA_Unet(nn.Module):
         
         #############
 
-        # FPA #
-        self.fpa = FPA(channels=512)
+        # Pyramid Pooling Module #
+        self.fpa = PSPModule(256,out_features=512)
         
         # Bottleneck #
         self.convB1 = nn.Conv2d(256, 512, 3, padding=1, bias=False)
@@ -141,13 +141,12 @@ class FPA_Unet(nn.Module):
         enc4 = F.relu(self.norm8(x))
         x = self.pool4(enc4)
 
-        # FEATURE PYRAMID ATTENTION
+        # Pyramid Pooling Module
         x = self.fpa(x)
  
         #BOTTLENECK
         #x = self.convB1(x)
         #x = F.relu(self.normB1(x))
-
         x = self.convB2(x)
         x = F.relu(self.normB2(x))
         
@@ -193,7 +192,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = FPA_Unet()
+    net = PP_Unet()
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,

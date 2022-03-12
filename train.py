@@ -25,6 +25,7 @@ from models.mm_unet_four import DMM_Unet_4
 from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
 from models.pa_unet import FPA_Unet
+from models.unet_pp import PP_Unet
 
 # hyperparameters
 LEARNING_RATE = 1e-3
@@ -39,23 +40,7 @@ LOAD_MODEL = False
 
 
 metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[]}
-
-def accuracy():
-    pass
-
-def show_batch(dl):
-    for images, labels in dl:
-        print(len(images))
-        print(images[0].shape)
-        
-        image = images[0].permute(1,2,0)
-        label = labels[0]
-
-        plt.imshow(label.squeeze(0), cmap="gray")
-        
-        plt.show()
-        
-
+      
 
 def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
     
@@ -128,6 +113,11 @@ def calc_bce(pred=None, target=None):
 
     return bce
 
+def focal_loss(alpha,gamma,bce_loss):
+    pt = torch.exp(-bce_loss)
+    focal_loss = (alpha * (1-pt)**gamma * bce_loss)
+    return focal_loss
+
 # separate this bit and move the dc loss function into the train.py file...
 # calculate weighted loss
 def calc_loss(pred, target, curr_metrics):
@@ -186,7 +176,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = FPA_Unet() # make sure to change the number of channels in the unet model file
+    model = PP_Unet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
