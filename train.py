@@ -26,6 +26,8 @@ from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
 from models.pa_unet import FPA_Unet
 from models.unet_pp import PP_Unet
+from models.unet_cbam import Unet_CBAM
+from models.custom_unet import UNet_Custom
 
 # hyperparameters
 LEARNING_RATE = 1e-3
@@ -109,9 +111,9 @@ def dc_loss(inputs,targets,smooth=1.):
 
 def calc_bce(pred=None, target=None):
     bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
-    bce = F.binary_cross_entropy_with_logits(pred, target, weight = bceweight) # the size of the lesions are small therefore it is important to use this
-
-    return bce
+    bce = nn.BCEWithLogitsLoss(weight = bceweight) # the size of the lesions are small therefore it is important to use this
+    bce_loss = bce(pred, target)
+    return bce_loss
 
 def focal_loss(alpha,gamma,bce_loss):
     pt = torch.exp(-bce_loss)
@@ -130,6 +132,7 @@ def calc_loss(pred, target, curr_metrics):
     
     dice,dice_coeff = dc_loss(pred, target)
 
+    # combo loss
     loss = bce * bce_weight + dice * (1 - bce_weight)
 
     curr_metrics['bce'] += bce.data.cpu().numpy() * target.size(0)
@@ -176,7 +179,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = PP_Unet() # make sure to change the number of channels in the unet model file
+    model = FPA_Unet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -193,7 +196,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=23) # 1337 before
+    train_data,val_data = train_test_split(dataset, test_size=0.25, train_size=0.75,random_state=26) # 1337 before
 
     
 
@@ -226,8 +229,8 @@ if __name__ == "__main__":
 
     fig, (ax1, ax2) = plt.subplots(1, 2)
     
-    ax1.plot(metrics["train_loss"],label="training bce loss")
-    ax1.plot(metrics["val_loss"], label="validation bce loss")
+    ax1.plot(metrics["train_bce"],label="training bce loss")
+    ax1.plot(metrics["val_bce"], label="validation bce loss")
     ax1.set_title("Loss")
     ax1.legend(loc="upper right")
     

@@ -52,8 +52,7 @@ class FPA_Unet(nn.Module):
         
         #############
 
-        # FPA #
-        self.fpa = FPA(channels=512)
+        
         
         # Bottleneck #
         self.convB1 = nn.Conv2d(256, 512, 3, padding=1, bias=False)
@@ -61,6 +60,9 @@ class FPA_Unet(nn.Module):
         #relu
         self.convB2 = nn.Conv2d(512,512,3, padding=1, bias=False)
         self.normB2 = nn.BatchNorm2d(512)
+
+        # FPA #
+        self.fpa = FPA(channels=512)
         
         
         #############
@@ -141,15 +143,17 @@ class FPA_Unet(nn.Module):
         enc4 = F.relu(self.norm8(x))
         x = self.pool4(enc4)
 
-        # FEATURE PYRAMID ATTENTION
-        x = self.fpa(x)
+        
  
         #BOTTLENECK
-        #x = self.convB1(x)
-        #x = F.relu(self.normB1(x))
+        x = self.convB1(x)
+        x = F.relu(self.normB1(x))
 
         x = self.convB2(x)
         x = F.relu(self.normB2(x))
+
+        # FEATURE PYRAMID ATTENTION
+        x = self.fpa(x)
         
         #### DECODER ####
         

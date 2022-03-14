@@ -9,6 +9,69 @@ import torch.nn.functional as F
 import torch.optim as optim
 from .pyramidpool import PSPModule
 
+class ConvBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=1, padding=0, stride=1, dilation=1, bias=False):
+        super(ConvBlock, self).__init__()
+        padding = (kernel_size + (kernel_size - 1) * (dilation - 1)) // 2
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, stride=stride, padding=padding, dilation=dilation, bias=bias),
+            nn.BatchNorm2d(out_channels),
+            nn.ReLU()
+        )
+
+    def forward(self, x):
+        out = self.conv(x)
+        return out
+
+
+def upsample(input, size=None, scale_factor=None, align_corners=False):
+    out = F.interpolate(input, size=size, scale_factor=scale_factor, mode='bilinear', align_corners=align_corners)
+    return out
+
+
+class PyramidPooling(nn.Module):
+    def __init__(self, in_channels):
+        super(PyramidPooling, self).__init__()
+        self.pooling_size = [1, 2, 3, 6]
+        self.channels = in_channels // 4
+
+        self.pool1 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(self.pooling_size[0]),
+            ConvBlock(in_channels, self.channels, kernel_size=1),
+        )
+
+        self.pool2 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(self.pooling_size[1]),
+            ConvBlock(in_channels, self.channels, kernel_size=1),
+        )
+
+        self.pool3 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(self.pooling_size[2]),
+            ConvBlock(in_channels, self.channels, kernel_size=1),
+        )
+
+        self.pool4 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(self.pooling_size[3]),
+            ConvBlock(in_channels, self.channels, kernel_size=1),
+        )
+
+    def forward(self, x):
+        out1 = self.pool1(x)
+        out1 = upsample(out1, size=x.size()[-2:])
+
+        out2 = self.pool2(x)
+        out2 = upsample(out2, size=x.size()[-2:])
+
+        out3 = self.pool3(x)
+        out3 = upsample(out3, size=x.size()[-2:])
+
+        out4 = self.pool4(x)
+        out4 = upsample(out4, size=x.size()[-2:])
+
+        out = torch.cat([x, out1, out2, out3, out4], dim=1)
+
+        return out
+
 class PP_Unet(nn.Module):
     
     
@@ -53,7 +116,7 @@ class PP_Unet(nn.Module):
         #############
 
         # Pyramid Pooling Module #
-        self.fpa = PSPModule(256,out_features=512)
+        self.pp = PyramidPooling(256)
         
         # Bottleneck #
         self.convB1 = nn.Conv2d(256, 512, 3, padding=1, bias=False)
@@ -142,7 +205,7 @@ class PP_Unet(nn.Module):
         x = self.pool4(enc4)
 
         # Pyramid Pooling Module
-        x = self.fpa(x)
+        x = self.pp(x)
  
         #BOTTLENECK
         #x = self.convB1(x)
