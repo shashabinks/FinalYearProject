@@ -5,7 +5,7 @@ import torchvision
 from torch.nn import functional as F
 
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
-from case_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
+from patient_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import nibabel as nib
 import matplotlib.pyplot as plt
 import torch
@@ -24,7 +24,7 @@ from models.a_unet_model import Attention_block, UNet_Attention
 from models.mm_unet_four import DMM_Unet_4
 from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
-from models.pa_unet import FPA_Unet
+from models.pan_unet import FPA_Unet
 from models.unet_pp import PP_Unet
 from models.unet_cbam import Unet_CBAM
 from models.custom_unet import UNet_Custom
@@ -229,8 +229,8 @@ if __name__ == "__main__":
 
     fig, (ax1, ax2) = plt.subplots(1, 2)
     
-    ax1.plot(metrics["train_bce"],label="training bce loss")
-    ax1.plot(metrics["val_bce"], label="validation bce loss")
+    ax1.plot(metrics["train_loss"],label="training bce loss")
+    ax1.plot(metrics["val_loss"], label="validation bce loss")
     ax1.set_title("Loss")
     ax1.legend(loc="upper right")
     

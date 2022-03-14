@@ -20,7 +20,7 @@ from PIL import Image
 import SimpleITK as sitk
 import albumentations as A
 import random
-
+import lookup
 
 
 # TODO: Add a much simpler way to split the dataset, i.e. store all the images in a dictionary of lists' and 
@@ -35,34 +35,35 @@ class train_ISLES2018_loader(Dataset):
         
         self.samples = []
         
-        for case in dataset:
-            for i in range(case['CT'].shape[2]):        # go through each case dimension (2-22)
-                slices = []                                # create array for each image slice
-                for modality in modalities:             # loop through the modalities
-                    if modality != 'OT':                # ignore the ground truth
+        for patient in dataset:
+            for case in patient:
+                for i in range(case['CT'].shape[2]):        # go through each case dimension (2-22)
+                    slices = []                                # create array for each image slice
+                    for modality in modalities:             # loop through the modalities
+                        if modality != 'OT':                # ignore the ground truth
 
-                        slice=case[modality].get_fdata()
-                        img_array = np.array(slice).astype('float64')
-                        img_2d = img_array[:,:,i].transpose((1,0))
-                        img_2d = np.uint8(img_2d[None,:])
-                        img_2d = torch.from_numpy(img_2d)
+                            slice=case[modality].get_fdata()
+                            img_array = np.array(slice).astype('float64')
+                            img_2d = img_array[:,:,i].transpose((1,0))
+                            img_2d = np.uint8(img_2d[None,:])
+                            img_2d = torch.from_numpy(img_2d)
 
 
-                        slices.append(img_2d) # add the slice to the array
+                            slices.append(img_2d) # add the slice to the array
+                    
+
+                    gt_slice=case['OT'].get_fdata()
+                    gt_array = np.array(gt_slice).astype('float64')
+                    gt_2d = gt_array[:,:,i].transpose((1,0))
+                    gt_2d = np.uint8(gt_2d[None,:])
+                    gt_2d = torch.from_numpy(gt_2d)
+
                 
-
-                gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice).astype('float64')
-                gt_2d = gt_array[:,:,i].transpose((1,0))
-                gt_2d = np.uint8(gt_2d[None,:])
-                gt_2d = torch.from_numpy(gt_2d)
-
-            
-                slices, gt_slice = self.transform(slices,gt_2d)
+                    slices, gt_slice = self.transform(slices,gt_2d)
+                    
+                    combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
                 
-                combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
-            
-                self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
+                    self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
                       
     def __getitem__(self, idx):
         return self.samples[idx]   # return the dataset corresponding to the input modality
@@ -147,34 +148,35 @@ class val_ISLES2018_loader(Dataset):
         
         self.samples = []
         
-        for case in dataset:
-            for i in range(case['CT'].shape[2]):        # go through each case dimension (2-22)
-                slices = []                                # create array for each image slice
-                for modality in modalities:             # loop through the modalities
-                    if modality != 'OT':                # ignore the ground truth
+        for patient in dataset:
+            for case in patient:
+                for i in range(case['CT'].shape[2]):        # go through each case dimension (2-22)
+                    slices = []                                # create array for each image slice
+                    for modality in modalities:             # loop through the modalities
+                        if modality != 'OT':                # ignore the ground truth
 
-                        slice=case[modality].get_fdata()
-                        img_array = np.array(slice).astype('float64')
-                        img_2d = img_array[:,:,i].transpose((1,0))
-                        img_2d = np.uint8(img_2d[None,:])
-                        img_2d = torch.from_numpy(img_2d)
+                            slice=case[modality].get_fdata()
+                            img_array = np.array(slice).astype('float64')
+                            img_2d = img_array[:,:,i].transpose((1,0))
+                            img_2d = np.uint8(img_2d[None,:])
+                            img_2d = torch.from_numpy(img_2d)
 
 
-                        slices.append(img_2d) # add the slice to the array
+                            slices.append(img_2d) # add the slice to the array
+                    
+
+                    gt_slice=case['OT'].get_fdata()
+                    gt_array = np.array(gt_slice).astype('float64')
+                    gt_2d = gt_array[:,:,i].transpose((1,0))
+                    gt_2d = np.uint8(gt_2d[None,:])
+                    gt_2d = torch.from_numpy(gt_2d)
+
                 
-
-                gt_slice=case['OT'].get_fdata()
-                gt_array = np.array(gt_slice).astype('float64')
-                gt_2d = gt_array[:,:,i].transpose((1,0))
-                gt_2d = np.uint8(gt_2d[None,:])
-                gt_2d = torch.from_numpy(gt_2d)
-
-            
-                slices, gt_slice = self.transform(slices,gt_2d)
+                    slices, gt_slice = self.transform(slices,gt_2d)
+                    
+                    combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
                 
-                combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
-            
-                self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
+                    self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
                
                         
     def __getitem__(self, idx):
@@ -209,13 +211,15 @@ class val_ISLES2018_loader(Dataset):
     
 
 def load_data(file_dir):
-    dataset = [] 
-
+    dataset = [[] for _ in range(0,63)] 
+    case_num = 1
     for case_name in os.listdir(file_dir):
 
         # some how get the case number and compare that to patient id lookup table
         # then, for each case, we append the images to a list and append the resulting case list to a list under the patient id in a dictionary   
         # so the result is patients = {patient_1 : [[case_1_images], [case_2_images]], etc}  
+        patient_id = lookup.patients_train[case_num]
+
         case_path = os.path.join(file_dir, case_name)
         case = {} # dict which will store all the images for each modality, this is later used to iterate through all the slices etc
 
@@ -225,8 +229,9 @@ def load_data(file_dir):
                 nii_path_name = os.path.join(case_path,path,path+'.nii')
                 img = nib.load(nii_path_name)
                 case[modality] = img
-            
-        dataset.append(case)
+        
+        case_num += 1 # increase the case num
+        dataset[patient_id-1].append(case)
     
     return dataset
 

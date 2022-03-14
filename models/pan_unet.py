@@ -7,7 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from .fpa import FPA
+from .fpa import FPA, GAU
+
 
 class FPA_Unet(nn.Module):
     
@@ -52,8 +53,6 @@ class FPA_Unet(nn.Module):
         
         #############
 
-        
-        
         # Bottleneck #
         self.convB1 = nn.Conv2d(256, 512, 3, padding=1, bias=False)
         self.normB1 = nn.BatchNorm2d(512)
@@ -66,11 +65,17 @@ class FPA_Unet(nn.Module):
         
         
         #############
+
+        
+
         
         #UP BLOCK 1#
+        
         self.upconv1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.conv9 = nn.Conv2d(512, 256, 3, padding=1, bias=False)
         self.norm9 = nn.BatchNorm2d(256)
+
+        self.gau1 = GAU(512,256,upsample=True)
         #relu
         self.conv10 = nn.Conv2d(256, 256, 3, padding=1, bias=False)
         self.norm10 = nn.BatchNorm2d(256)
@@ -81,6 +86,8 @@ class FPA_Unet(nn.Module):
         self.upconv2 = nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2)
         self.conv11 = nn.Conv2d(256, 128, 3, padding=1, bias=False)
         self.norm11 = nn.BatchNorm2d(128)
+
+        self.gau2 = GAU(256,128,upsample=True)
         #relu
         self.conv12 = nn.Conv2d(128, 128, 3, padding=1, bias=False)
         self.norm12 = nn.BatchNorm2d(128)
@@ -90,6 +97,8 @@ class FPA_Unet(nn.Module):
         self.upconv3 = nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2)
         self.conv13 = nn.Conv2d(128,64,3,padding=1, bias=False)
         self.norm13 = nn.BatchNorm2d(64)
+
+        self.gau3 = GAU(128,64,upsample=True)
         #relu
         self.conv14 = nn.Conv2d(64, 64, 3, padding=1, bias=False)
         self.norm14 = nn.BatchNorm2d(64)
@@ -99,6 +108,8 @@ class FPA_Unet(nn.Module):
         self.upconv4 = nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2)
         self.conv15 = nn.Conv2d(64,32,3,padding=1, bias=False)
         self.norm15 = nn.BatchNorm2d(32)
+
+        self.gau4 = GAU(64,32,upsample=True)
         #relu
         self.conv16 = nn.Conv2d(32, 32, 3, padding=1, bias=False)
         self.norm16 = nn.BatchNorm2d(32)
@@ -148,7 +159,6 @@ class FPA_Unet(nn.Module):
         #BOTTLENECK
         x = self.convB1(x)
         x = F.relu(self.normB1(x))
-
         x = self.convB2(x)
         x = F.relu(self.normB2(x))
 
@@ -158,34 +168,66 @@ class FPA_Unet(nn.Module):
         #### DECODER ####
         
         #BLOCK 1
+        # Use GAU module before next convolution
+        """
         x = self.upconv1(x)
         x = torch.cat((x, enc4), dim=1) # skip layer
         x = self.conv9(x)
         x = F.relu(self.norm9(x))
+        """
+
+        upsample_1 = self.upconv1(x)
+        x = self.gau1(x,enc4) # need to add this one up with the output of the high-level feature
+
+        x = F.relu(upsample_1 + x)
+
         x = self.conv10(x)
         x = F.relu(self.norm10(x))
         
         #BLOCK 2
+        """
         x = self.upconv2(x)
         x = torch.cat((x, enc3), dim=1)
         x = self.conv11(x)
         x = F.relu(self.norm11(x))
+        """
+
+        upsample_2 = self.upconv2(x)
+        x = self.gau2(x,enc3)
+
+        x = F.relu(x +  upsample_2)
+
         x = self.conv12(x)
         x = F.relu(self.norm12(x))
         
         #BLOCK 3
+        """
         x = self.upconv3(x)
         x = torch.cat((x, enc2), dim=1)
         x = self.conv13(x)
         x = F.relu(self.norm13(x))
+        """
+        upsample_3 = self.upconv3(x)
+        x = self.gau3(x,enc2)
+
+        x = F.relu(x +  upsample_3)
+
         x = self.conv14(x)
         x = F.relu(self.norm14(x))
         
         #BLOCK 4
+        """
         x = self.upconv4(x)
         x = torch.cat((x, enc1), dim=1)
         x = self.conv15(x)
         x = F.relu(self.norm15(x))
+        """
+
+        upsample_4 = self.upconv4(x)
+        x = self.gau4(x,enc1)
+
+        x = F.relu(upsample_4 + x)
+
         x = self.conv16(x)
         x = F.relu(self.norm16(x))
         
