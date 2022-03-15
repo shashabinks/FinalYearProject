@@ -24,10 +24,10 @@ from models.a_unet_model import Attention_block, UNet_Attention
 from models.mm_unet_four import DMM_Unet_4
 from models.mm_unet import DMM_Unet
 from models.mult_res_unet import MultiResNet
-from models.pan_unet import FPA_Unet
+from models.pan_unet import PAN_Unet
 from models.unet_pp import PP_Unet
 from models.unet_cbam import Unet_CBAM
-from models.custom_unet import UNet_Custom
+
 
 # hyperparameters
 LEARNING_RATE = 1e-3
@@ -179,7 +179,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = FPA_Unet() # make sure to change the number of channels in the unet model file
+    model = PAN_Unet() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -196,8 +196,10 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.25, train_size=0.75,random_state=26) # 1337 before
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=30) # 30 before
 
+    print( "Number of Patient Cases: ", len(dataset))
+    #print(dataset[0])
     
 
     #################

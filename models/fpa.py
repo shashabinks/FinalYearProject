@@ -8,7 +8,11 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
 
+"""
+Implementation of Pyramid Attention Network (Modules Only)
 
+Li, H., Xiong, P., An, J. and Wang, L., 2018. Pyramid attention network for semantic segmentation. arXiv preprint arXiv:1805.10180.
+"""
 class FPA(nn.Module):
     def __init__(self, channels=512):
         """
@@ -114,12 +118,12 @@ class GAU(nn.Module):
         self.bn_high = nn.BatchNorm2d(channels_low)
 
         if upsample:
-            self.conv_upsample = nn.ConvTranspose2d(channels_high, channels_low, kernel_size=4, stride=2, padding=1, bias=False)
+            self.conv_upsample = nn.ConvTranspose2d(channels_high, channels_low, kernel_size=4, stride=2, padding=1, bias=False)  # change kernel size from 4 to 2?
             self.bn_upsample = nn.BatchNorm2d(channels_low)
         else:
             self.conv_reduction = nn.Conv2d(channels_high, channels_low, kernel_size=1, padding=0, bias=False)
             self.bn_reduction = nn.BatchNorm2d(channels_low)
-            
+
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, fms_high, fms_low, fm_mask=None):
@@ -143,7 +147,8 @@ class GAU(nn.Module):
         fms_low_mask = self.conv3x3(fms_low)
         fms_low_mask = self.bn_low(fms_low_mask)
 
-        fms_att = fms_low_mask * fms_high_gp
+        fms_att = fms_low_mask * fms_high_gp # this bit is the part coming out
+
         if self.upsample:
             out = self.relu(
                 self.bn_upsample(self.conv_upsample(fms_high)) + fms_att)

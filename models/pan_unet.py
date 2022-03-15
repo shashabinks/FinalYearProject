@@ -10,11 +10,13 @@ import torch.optim as optim
 from .fpa import FPA, GAU
 
 
-class FPA_Unet(nn.Module):
+class PAN_Unet(nn.Module):
     
     
     def __init__(self):
-        super(FPA_Unet, self).__init__()
+        super(PAN_Unet, self).__init__()
+
+        self.dropout = nn.Dropout(0.25)
         # DOWN BLOCK 1 #
         self.conv1 = nn.Conv2d(5, 32, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(32)
@@ -66,16 +68,12 @@ class FPA_Unet(nn.Module):
         
         #############
 
-        
-
-        
         #UP BLOCK 1#
-        
         self.upconv1 = nn.ConvTranspose2d(512, 256, kernel_size=2, stride=2)
         self.conv9 = nn.Conv2d(512, 256, 3, padding=1, bias=False)
         self.norm9 = nn.BatchNorm2d(256)
-
-        self.gau1 = GAU(512,256,upsample=True)
+ 
+        self.gau1 = GAU(512,256,upsample=True) # dont upsample the first one?
         #relu
         self.conv10 = nn.Conv2d(256, 256, 3, padding=1, bias=False)
         self.norm10 = nn.BatchNorm2d(256)
@@ -128,10 +126,12 @@ class FPA_Unet(nn.Module):
         
         #BLOCK 1
         x = self.conv1(x)
+        # add dropout here?
         x = F.relu(self.norm1(x))
         x = self.conv2(x)
         enc1 = F.relu(self.norm2(x))
         x = self.pool1(enc1)
+        x = self.dropout(x)
         
         #BLOCK 2
         x = self.conv3(x)
@@ -139,6 +139,7 @@ class FPA_Unet(nn.Module):
         x = self.conv4(x)
         enc2 = F.relu(self.norm4(x))
         x = self.pool2(enc2)
+        x = self.dropout(x)
         
         #BLOCK 3
         x = self.conv5(x)
@@ -146,6 +147,7 @@ class FPA_Unet(nn.Module):
         x = self.conv6(x)
         enc3 = F.relu(self.norm6(x))
         x = self.pool3(enc3)
+        x = self.dropout(x)
         
         #BLOCK 4
         x = self.conv7(x)
@@ -153,6 +155,7 @@ class FPA_Unet(nn.Module):
         x = self.conv8(x)
         enc4 = F.relu(self.norm8(x))
         x = self.pool4(enc4)
+        x = self.dropout(x)
 
         
  
@@ -176,11 +179,8 @@ class FPA_Unet(nn.Module):
         x = F.relu(self.norm9(x))
         """
 
-        upsample_1 = self.upconv1(x)
         x = self.gau1(x,enc4) # need to add this one up with the output of the high-level feature
-
-        x = F.relu(upsample_1 + x)
-
+        #x = self.dropout(x)
         x = self.conv10(x)
         x = F.relu(self.norm10(x))
         
@@ -192,11 +192,8 @@ class FPA_Unet(nn.Module):
         x = F.relu(self.norm11(x))
         """
 
-        upsample_2 = self.upconv2(x)
         x = self.gau2(x,enc3)
-
-        x = F.relu(x +  upsample_2)
-
+        #x = self.dropout(x)
         x = self.conv12(x)
         x = F.relu(self.norm12(x))
         
@@ -207,10 +204,11 @@ class FPA_Unet(nn.Module):
         x = self.conv13(x)
         x = F.relu(self.norm13(x))
         """
-        upsample_3 = self.upconv3(x)
+        #upsample_3 = self.upconv3(x)
         x = self.gau3(x,enc2)
+        
 
-        x = F.relu(x +  upsample_3)
+        #x = F.relu(x +  upsample_3)
 
         x = self.conv14(x)
         x = F.relu(self.norm14(x))
@@ -219,14 +217,15 @@ class FPA_Unet(nn.Module):
         """
         x = self.upconv4(x)
         x = torch.cat((x, enc1), dim=1)
-        x = self.conv15(x)
+        x = self.conv15(x) 
         x = F.relu(self.norm15(x))
         """
 
-        upsample_4 = self.upconv4(x)
+        #upsample_4 = self.upconv4(x)
         x = self.gau4(x,enc1)
+        
 
-        x = F.relu(upsample_4 + x)
+        #x = F.relu(upsample_4 + x)
 
         x = self.conv16(x)
         x = F.relu(self.norm16(x))
@@ -239,7 +238,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = FPA_Unet()
+    net = PAN_Unet()
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
