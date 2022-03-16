@@ -7,7 +7,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
-from fpa import FPA, GAU
+from .fpa import FPA, GAU
 
 class Recurrent_block(nn.Module):
     def __init__(self,ch_out,t=2):
@@ -63,11 +63,12 @@ class RPAN_Unet(nn.Module):
 
         # Bottleneck Layer #
 
-        # FPA #
-        self.fpa = FPA(channels=256)
+        
         
         self.RRCNN5 = RRCNN_block(ch_in=256,ch_out=512,t=2)
 
+        # FPA #
+        self.fpa = FPA(channels=512)
         
         
         
@@ -121,11 +122,11 @@ class RPAN_Unet(nn.Module):
 
         # bottleneck Level 5
         x5 = self.maxpool(x4)
-        x5 = self.fpa(x5)
         x5 = self.RRCNN5(x5)
+        x5 = self.fpa(x5)
         
         
-
+    
         # decoding + concat path
         
         # Level 4

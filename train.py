@@ -17,6 +17,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from utils import save_predictions_as_imgs
 from torch.optim.lr_scheduler import StepLR
+import timm
 
 # MODELS
 from models.unet_model import UNet_2D
@@ -27,18 +28,22 @@ from models.mult_res_unet import MultiResNet
 from models.pan_unet import PAN_Unet
 from models.unet_pp import PP_Unet
 from models.unet_cbam import Unet_CBAM
+from models.custom_unet import RPAN_Unet
+from models.trans_unet import transUnet
+from models.unet.unet_transformer.unet import TransUnet
 
 
 # hyperparameters
-LEARNING_RATE = 1e-3
+LEARNING_RATE = 2e-3
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 300+1
+NUM_EPOCHS = 100+1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
 LOAD_MODEL = False
+TRANSFORMER = False
 
 
 metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[]}
@@ -179,7 +184,17 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    model = PAN_Unet() # make sure to change the number of channels in the unet model file
+    m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
+    #model = transUnet(p=0.2,attn_p=0.2)
+    model = TransUnet(in_channels=5,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
+    transunet_model_dict = model.state_dict()
+    pretrained_dict = {k: v for k, v in m1.state_dict().items() if k in transunet_model_dict}
+    transunet_model_dict.update(pretrained_dict)
+    model.load_state_dict(transunet_model_dict)
+
+
+
+    #model = UNet_2D() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -219,7 +234,7 @@ if __name__ == "__main__":
 
 
     optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=8, gamma=0.3)
+    #scheduler = StepLR(optimizer, step_size=8, gamma=0.3)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
 
