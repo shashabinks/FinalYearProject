@@ -45,7 +45,8 @@ class TransUnet(nn.Module):
                        heads=vit_heads,
                        dim_linear_block=vit_dim_linear_mhsa_block,
                        classification=False)
-
+        
+        # add a aspp module here?
         self.vit_conv = SignleConv(in_ch=vit_channels, out_ch=512)
 
         self.dec1 = Up(1024, 256)

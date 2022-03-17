@@ -30,11 +30,11 @@ from models.unet_pp import PP_Unet
 from models.unet_cbam import Unet_CBAM
 from models.custom_unet import RPAN_Unet
 from models.trans_unet import transUnet
-from models.unet.unet_transformer.unet import TransUnet
+from models.t_unet import TransUnet
 
 
 # hyperparameters
-LEARNING_RATE = 2e-3
+LEARNING_RATE = 2e-2
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 100+1
@@ -48,7 +48,7 @@ TRANSFORMER = False
 
 metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[]}
       
-
+# define training function
 def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
     
     # iterate through the epochs
@@ -113,13 +113,14 @@ def dc_loss(inputs,targets,smooth=1.):
     
     return loss.mean(),dice.mean() # output loss
 
-
+# weighted due to class imbalance
 def calc_bce(pred=None, target=None):
     bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
     bce = nn.BCEWithLogitsLoss(weight = bceweight) # the size of the lesions are small therefore it is important to use this
     bce_loss = bce(pred, target)
     return bce_loss
 
+# used in PAN paper
 def focal_loss(alpha,gamma,bce_loss):
     pt = torch.exp(-bce_loss)
     focal_loss = (alpha * (1-pt)**gamma * bce_loss)
@@ -184,17 +185,28 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
+    # """
+    # load pretrained vit model
     m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
-    #model = transUnet(p=0.2,attn_p=0.2)
+    
+    # declare model
     model = TransUnet(in_channels=5,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
+
+    # create model weight dict
     transunet_model_dict = model.state_dict()
+
+    # load the model weights
     pretrained_dict = {k: v for k, v in m1.state_dict().items() if k in transunet_model_dict}
+
+    # update weight dict
     transunet_model_dict.update(pretrained_dict)
+
+    # load weights
     model.load_state_dict(transunet_model_dict)
+    # """
 
 
-
-    #model = UNet_2D() # make sure to change the number of channels in the unet model file
+    #model = Unet_CBAM() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
@@ -214,7 +226,6 @@ if __name__ == "__main__":
     train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=30) # 30 before
 
     print( "Number of Patient Cases: ", len(dataset))
-    #print(dataset[0])
     
 
     #################
@@ -237,12 +248,6 @@ if __name__ == "__main__":
     #scheduler = StepLR(optimizer, step_size=8, gamma=0.3)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS)
-
-    #plt.plot(metrics["train_loss"], label="training bce loss")
-    #plt.plot(metrics["val_loss"], label="validation bce loss")
-    #plt.xlabel("Num of Epochs")
-    #plt.ylabel("")
-    #plt.legend()
 
     fig, (ax1, ax2) = plt.subplots(1, 2)
     
