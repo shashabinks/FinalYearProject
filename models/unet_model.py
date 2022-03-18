@@ -15,7 +15,7 @@ class UNet_2D(nn.Module):
     def __init__(self):
         super(UNet_2D, self).__init__()
         # DOWN BLOCK 1 #
-        self.conv1 = nn.Conv2d(5, 32, 3, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(4, 32, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(32)
         #relu
         self.conv2 = nn.Conv2d(32, 32, 3, padding=1, bias=False)

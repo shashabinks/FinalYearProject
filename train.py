@@ -30,14 +30,14 @@ from models.mult_res_unet import MultiResNet
 from models.pan_unet import PAN_Unet
 from models.unet_pp import PP_Unet
 from models.unet_cbam import Unet_CBAM
-from models.custom_unet import RPAN_Unet
+#from models.custom_unet import RPAN_Unet
 from models.trans_unet import transUnet
 from models.t_unet import TransUnet
 from models.unet_aspp import UNet_ASPP
 
 
 # hyperparameters
-LEARNING_RATE = 1e-2
+LEARNING_RATE = 0.001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 200+1
@@ -188,7 +188,7 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    
+    """
     # load pretrained vit model for weight extraction
     m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
 
@@ -214,6 +214,7 @@ if __name__ == "__main__":
     for params in model.blocks.children():
         for param in params.parameters():
             param.requires_grad = False
+    """
 
     #model.blocks[3].attn.proj.weight.requires_grad = True
 
@@ -229,19 +230,19 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    #model = Unet_CBAM() # make sure to change the number of channels in the unet model file
+    model = DMM_Unet_4() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
     model.to(DEVICE)
 
 
-    """
+    
     # Need to consider splitting the training set manually
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
 
-    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
+    modalities = ['OT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
 
     ### NEW STUFF ###
     directory = "ISLES/TRAINING"
@@ -287,6 +288,6 @@ if __name__ == "__main__":
 
     plt.legend()
     plt.show()
-    """
+    
     
 
