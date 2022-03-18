@@ -3,6 +3,38 @@ import torch
 from einops import rearrange
 from .transformer import ViT
 
+class ASPP(nn.Module):
+    def __init__(self, in_channel, depth):
+        super(ASPP,self).__init__()
+        # global average pooling : init nn.AdaptiveAvgPool2d ;also forward torch.mean(,,keep_dim=True)
+        self.mean = nn.AdaptiveAvgPool2d((1, 1))
+        self.conv = nn.Conv2d(in_channel, depth, 1, 1)
+        # k=1 s=1 no pad
+        self.atrous_block1 = nn.Conv2d(in_channel, depth, 1, 1)
+        self.atrous_block6 = nn.Conv2d(in_channel, depth, 3, 1, padding=6, dilation=6)
+        self.atrous_block12 = nn.Conv2d(in_channel, depth, 3, 1, padding=12, dilation=12)
+        self.atrous_block18 = nn.Conv2d(in_channel, depth, 3, 1, padding=18, dilation=18)
+ 
+        self.conv_1x1_output = nn.Conv2d(depth * 5, depth, 1, 1)
+ 
+    def forward(self, x):
+        size = x.shape[2:]
+ 
+        image_features = self.mean(x)
+        image_features = self.conv(image_features)
+        image_features = nn.functional.interpolate(image_features, size=size, mode='bilinear')
+ 
+        atrous_block1 = self.atrous_block1(x)
+ 
+        atrous_block6 = self.atrous_block6(x)
+ 
+        atrous_block12 = self.atrous_block12(x)
+
+        atrous_block18 = self.atrous_block18(x)
+ 
+        net = self.conv_1x1_output(torch.cat([image_features, atrous_block1, atrous_block6,
+                                              atrous_block12, atrous_block18], dim=1))
+        return net
 
 # taken and adapted form torchvision repo
 # https://github.com/pytorch/vision/blob/af97ec2f4c9daac091b9a87355c4f22d37488004/torchvision/models/resnet.py#L86
@@ -123,7 +155,7 @@ class Up(nn.Module):
             x = torch.cat([x2, x], dim=1)
         return self.conv(x)
 
-class TransUnet(nn.Module):
+class ASPPTransUnet(nn.Module):
     def __init__(self, *, img_dim, in_channels, classes,
                  vit_blocks=12,
                  vit_heads=4,
@@ -168,6 +200,8 @@ class TransUnet(nn.Module):
         self.vit_conv = SingleConv(in_ch=vit_channels, out_ch=512)
         # add a aspp module here?
 
+        self.aspp = ASPP(512,512)
+
         self.dec1 = Up(1024, 256)
         self.dec2 = Up(512, 128)
         self.dec3 = Up(256, 64)
@@ -183,6 +217,7 @@ class TransUnet(nn.Module):
         y = self.vit(x16)
         y = rearrange(y, 'b (x y) dim -> b dim x y ', x=self.img_dim_vit, y=self.img_dim_vit)
         y = self.vit_conv(y)
+        y = self.aspp(y)
         y = self.dec1(y, x8)  # 256,16,16
         y = self.dec2(y, x4)
         y = self.dec3(y, x2)
@@ -195,7 +230,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = TransUnet(in_channels=5,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
+    net = ASPPTransUnet(in_channels=5,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,

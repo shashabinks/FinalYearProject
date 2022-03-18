@@ -19,6 +19,8 @@ from utils import save_predictions_as_imgs
 from torch.optim.lr_scheduler import StepLR
 import timm
 
+from torchinfo import summary
+
 # MODELS
 from models.unet_model import UNet_2D
 from models.a_unet_model import Attention_block, UNet_Attention
@@ -31,13 +33,14 @@ from models.unet_cbam import Unet_CBAM
 from models.custom_unet import RPAN_Unet
 from models.trans_unet import transUnet
 from models.t_unet import TransUnet
+from models.unet_aspp import UNet_ASPP
 
 
 # hyperparameters
-LEARNING_RATE = 2e-2
+LEARNING_RATE = 1e-2
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 100+1
+NUM_EPOCHS = 200+1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -185,17 +188,20 @@ def check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    # """
-    # load pretrained vit model
+    
+    # load pretrained vit model for weight extraction
     m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
+
+    #for name,param in m1.named_parameters():
+     #   print(name)
     
     # declare model
-    model = TransUnet(in_channels=5,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
+    model = transUnet(p=0.2,attn_p=0.2)
 
     # create model weight dict
     transunet_model_dict = model.state_dict()
 
-    # load the model weights
+    # load the model weights only for the specific parts like ViT
     pretrained_dict = {k: v for k, v in m1.state_dict().items() if k in transunet_model_dict}
 
     # update weight dict
@@ -203,8 +209,25 @@ if __name__ == "__main__":
 
     # load weights
     model.load_state_dict(transunet_model_dict)
-    # """
 
+    # need to freeze the ViT weights specifically
+    for params in model.blocks.children():
+        for param in params.parameters():
+            param.requires_grad = False
+
+    #model.blocks[3].attn.proj.weight.requires_grad = True
+
+    # view summary of model
+    #summary(model, input_size=(4,5,256,256))
+
+    #print(model.blocks[3].attn.proj.bias)
+
+    #print(model.vit.mlp_head.weight)
+    #print(model.vit.transformer.layers[0])
+
+    
+    #for name,param in model.named_parameters():
+    #   print(name,param)
 
     #model = Unet_CBAM() # make sure to change the number of channels in the unet model file
     print(DEVICE)
@@ -213,6 +236,7 @@ if __name__ == "__main__":
     model.to(DEVICE)
 
 
+    """
     # Need to consider splitting the training set manually
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
@@ -223,7 +247,7 @@ if __name__ == "__main__":
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=30) # 30 before
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=20) # 30 before
 
     print( "Number of Patient Cases: ", len(dataset))
     
@@ -263,5 +287,6 @@ if __name__ == "__main__":
 
     plt.legend()
     plt.show()
-
+    """
+    
 

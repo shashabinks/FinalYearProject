@@ -159,7 +159,7 @@ class ResNetV2(nn.Module):
         self.width = width
 
         self.root = nn.Sequential(OrderedDict([
-            ('conv', StdConv2d(3, width, kernel_size=7, stride=2, bias=False, padding=3)),
+            ('conv', StdConv2d(5, width, kernel_size=7, stride=2, bias=False, padding=3)),
             ('gn', nn.GroupNorm(32, width, eps=1e-6)),
             ('relu', nn.ReLU(inplace=True)),
             # ('pool', nn.MaxPool2d(kernel_size=3, stride=2, padding=0))
@@ -207,7 +207,10 @@ class Embeddings(nn.Module):
 
     def __init__(self,embed_dim = 768,n_patches=196,p=0.,in_channels=3):
         super(Embeddings, self).__init__()
+
+        # this part is based on ResNet, maybe use a different encoder?
         self.hybrid_model = ResNetV2(block_units=(3, 4, 9), width_factor=1)
+
         in_channels = self.hybrid_model.width * 16
         self.patch_embeddings = nn.Conv2d(in_channels=in_channels,
                                        out_channels=embed_dim,
@@ -244,23 +247,16 @@ class transUnet(nn.Module):
 
         
         self.n_patches = (img_size//patch_size) ** 2
+
+        # encoder part and splitting into patches
         self.embeddings = Embeddings(embed_dim,self.n_patches,p)
 
         
-        self.blocks = nn.ModuleList(
-                        [
-                            Block(dim = embed_dim,
-                                  n_heads=n_heads,
-                                 mlp_ratio=mlp_ratio,
-                                 qkv_bias = qkv_bias,
-                                 p=p,
-                                 attn_p=attn_p,)
-                            
-                            for _ in range(depth)
-                        ])
+        # vit
+        self.blocks = nn.ModuleList([Block(dim = embed_dim, n_heads=n_heads, mlp_ratio=mlp_ratio, qkv_bias = qkv_bias, p=p, attn_p=attn_p,) for _ in range(depth)])
 
         
-        #decoder part
+        #bottleneck layer
         self.deconv1 = conv_trans_block(embed_dim,512)
         
         self.deconv2_1 = conv_trans_block(1024,256)
@@ -287,7 +283,7 @@ class transUnet(nn.Module):
         n_samples = x.shape[0]
         
 
-        x = self.L_init(x)
+        #x = self.L_init(x)
 
         x = self.embeddings(x)
         projections = x[0]
@@ -323,7 +319,7 @@ class transUnet(nn.Module):
         x1 = self.prefinal_2(x1)
         
         x1 = self.out(x1)
-        x1 = torch.sigmoid(x1)
+        #x1 = torch.sigmoid(x1)
         return x1
 
 
