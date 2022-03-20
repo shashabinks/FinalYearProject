@@ -1,15 +1,8 @@
 
 # A Dense Multi-Modal U-Net
-from turtle import forward
-import nibabel as nib
-import matplotlib.pyplot as plt
-import os
-import re
 import numpy as np
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import torch.optim as optim
 import math
 
 class MultiHeadDense(nn.Module):
@@ -35,6 +28,9 @@ class MultiHeadDense(nn.Module):
         b, wh, d = x.size()
         x = torch.bmm(x, self.weight.repeat(b, 1, 1))
         # x = F.linear(x, self.weight, self.bias)
+
+        del b
+
         return x
 
 class MultiHeadAttention(nn.Module):
@@ -145,10 +141,15 @@ class MultiHeadSelfAttention(MultiHeadAttention):
         x = x.reshape(b, c, h * w).permute(0, 2, 1)  #[b, h*w, d]
         Q = self.query(x)
         K = self.key(x)
-        A = self.softmax(torch.bmm(Q, K.permute(0, 2, 1)) /
-                         math.sqrt(c))  #[b, h*w, h*w]
+        A = self.softmax(torch.bmm(Q, K.permute(0, 2, 1)) / math.sqrt(c))  #[b, h*w, h*w]
+
+        del Q , K
+
         V = self.value(x)
         x = torch.bmm(A, V).permute(0, 2, 1).reshape(b, c, h, w)
+
+        del A,V
+
         return x
 
 
@@ -178,25 +179,46 @@ class MultiHeadCrossAttention(MultiHeadAttention):
         self.Ype = PositionalEncodingPermute2D(channelY)
 
     def forward(self, Y, S):
-        Sb, Sc, Sh, Sw = S.size()
-        Yb, Yc, Yh, Yw = Y.size()
+        _, Sc, _, _ = S.size()
+        Yb, _, Yh, Yw = Y.size()
         # Spe = self.positional_encoding_2d(Sc, Sh, Sw)
         Spe = self.Spe(S)
         S = S + Spe
         S1 = self.Sconv(S).reshape(Yb, Sc, Yh * Yw).permute(0, 2, 1)
         V = self.value(S1)
         # Ype = self.positional_encoding_2d(Yc, Yh, Yw)
+
+        del S1
+
         Ype = self.Ype(Y)
         Y = Y + Ype
         Y1 = self.Yconv(Y).reshape(Yb, Sc, Yh * Yw).permute(0, 2, 1)
         Y2 = self.Yconv2(Y)
+
+        del Y
+
         Q = self.query(Y1)
         K = self.key(Y1)
+
+        del Y1
+
         A = self.softmax(torch.bmm(Q, K.permute(0, 2, 1)) / math.sqrt(Sc))
         x = torch.bmm(A, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
+
+        del Q, K, A, V , Yb, Sc, Yh, Yw
+
         Z = self.conv(x)
+
+        del x
+
         Z = Z * S
+
+        del S
+
         Z = torch.cat([Z, Y2], dim=1)
+
+        del Y2
+
         return Z
 
 def croppCenter(tensorToCrop,finalShape):
@@ -265,9 +287,9 @@ class UpBlock2d(nn.Module):
         return x
 
 
-class DMM_Unet_4(nn.Module):
+class TDMM_Unet_4(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, num_of_features = 32):
-        super().__init__()
+        super(TDMM_Unet_4,self).__init__()
 
         self.in_dim = in_channels
         self.out_dim = num_of_features
@@ -276,9 +298,9 @@ class DMM_Unet_4(nn.Module):
 
         # ~~~ ENCODING PATHS ~~~ #
 
-        # 5 image modalities, therefore 5 separate paths, all the same structure
+        # 4 image modalities, therefore 5 separate paths, all the same structure
 
-        # Encoder ~ M1 ~ CT
+        # Encoder ~ M1 ~ CBF
         self.down_1_0 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_0 = nn.MaxPool2d(kernel_size=2, stride=2)
 
@@ -291,7 +313,7 @@ class DMM_Unet_4(nn.Module):
         self.down_4_0 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_0 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # Encoder ~ M2 ~ CT_CBV
+        # Encoder ~ M2 ~ CBV
         self.down_1_1 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
@@ -304,7 +326,7 @@ class DMM_Unet_4(nn.Module):
         self.down_4_1 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_1 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # Encoder ~ M3 ~ CT_CBF
+        # Encoder ~ M3 ~ Tmax
         self.down_1_2 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
@@ -317,7 +339,7 @@ class DMM_Unet_4(nn.Module):
         self.down_4_2 = ConvBlock2d(self.out_dim * 28, self.out_dim * 8)
         self.pool_4_2 = nn.MaxPool2d(kernel_size=2, stride=2)
 
-        # Encoder ~ M4 ~ CT_Tmax
+        # Encoder ~ M4 ~ MTT
         self.down_1_3 = ConvBlock2d(self.in_dim, self.out_dim)
         self.pool_1_3 = nn.MaxPool2d(kernel_size=2, stride=2)
 
@@ -341,19 +363,19 @@ class DMM_Unet_4(nn.Module):
         
 
         self.mhca1 = MultiHeadCrossAttention(self.out_dim * 16,self.out_dim * 8)
-        self.conv1 = nn.Conv2d(self.out_dim * 8, self.out_dim * 8, 3, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(self.out_dim * 16, self.out_dim * 8, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(self.out_dim * 8)
 
         self.mhca2 = MultiHeadCrossAttention(self.out_dim * 8,self.out_dim * 4)
-        self.conv2 = nn.Conv2d(self.out_dim * 4, self.out_dim * 4, 3, padding=1, bias=False)
+        self.conv2 = nn.Conv2d(self.out_dim * 8, self.out_dim * 4, 3, padding=1, bias=False)
         self.norm2 = nn.BatchNorm2d(self.out_dim * 4)
 
         self.mhca3 = MultiHeadCrossAttention(self.out_dim * 4,self.out_dim * 2)
-        self.conv3 = nn.Conv2d(self.out_dim * 2, self.out_dim * 2, 3, padding=1, bias=False)
+        self.conv3 = nn.Conv2d(self.out_dim * 4, self.out_dim * 2, 3, padding=1, bias=False)
         self.norm3 = nn.BatchNorm2d(self.out_dim * 2)
 
         self.mhca4 = MultiHeadCrossAttention(self.out_dim * 2 ,self.out_dim * 1)
-        self.conv4 = nn.Conv2d(self.out_dim * 1, self.out_dim * 1, 3, padding=1, bias=False)
+        self.conv4 = nn.Conv2d(self.out_dim * 2, self.out_dim * 1, 3, padding=1, bias=False)
         self.norm4 = nn.BatchNorm2d(self.out_dim * 1)
 
         self.upLayer1 = UpBlock2d(self.out_dim * 16, self.out_dim * 8)
@@ -486,6 +508,8 @@ class DMM_Unet_4(nn.Module):
         inputBridge = torch.cat((inputBridge, croppCenter(input_4th_0, inputBridge.shape)), dim=1)
 
         bridge = self.bridge(inputBridge)
+
+        # after rebuild, apply mhsa module
         y = self.mhsa(bridge)
 
         # ~~~~~~ Decoding path ~~~~~~~  #
@@ -494,6 +518,7 @@ class DMM_Unet_4(nn.Module):
         skip_3 = (down_2_0 + down_2_1 + down_2_2 + down_2_3) / 4.0
         skip_4 = (down_1_0 + down_1_1 + down_1_2 + down_1_3) / 4.0      # top one
 
+        #"""
         x = self.mhca1(y,skip_1)
         x = self.conv1(x)
         x = self.norm1(x)
@@ -506,15 +531,24 @@ class DMM_Unet_4(nn.Module):
         x = self.conv3(x)
         x = self.norm3(x)
 
+        #print("YO")
+        
+        """
         x = self.mhca4(x,skip_4)
         x = self.conv4(x)
         x = self.norm4(x)
 
-        #x = self.upLayer1(y, skip_1)
-        #x = self.upLayer2(x, skip_2)
-        #x = self.upLayer3(x, skip_3)
-        #x = self.upLayer4(x, skip_4)
+        print("YO")
+        """
 
+        """
+        x = self.upLayer1(y, skip_1)
+        x = self.upLayer2(x, skip_2)
+        x = self.upLayer3(x, skip_3)
+        x = self.upLayer4(x, skip_4)
+        """
+        x = self.upLayer4(x, skip_4)
+        
         return self.out(x)
 
 
@@ -522,8 +556,10 @@ if __name__ == "__main__":
     batch_size = 4
     num_classes = 1  # one hot
     initial_kernels = 32
-
-    net = DMM_Unet_4(1, num_classes)
+    
+    
+    
+    net = TDMM_Unet_4(1, num_classes)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
@@ -532,6 +568,7 @@ if __name__ == "__main__":
     if torch.cuda.is_available():
         net = net.cuda()
         CT = CT.cuda()
+        torch.cuda.empty_cache()
 
     segmentation_prediction = net(CT)
     print("Output:",segmentation_prediction.shape)

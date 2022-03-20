@@ -1,17 +1,14 @@
 from collections import defaultdict
 import torch
 import torch.nn as nn
-import torchvision
 from torch.nn import functional as F
 
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
 from patient_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
-import nibabel as nib
 import matplotlib.pyplot as plt
 import torch
 from sklearn.model_selection import train_test_split
 import torch.nn as nn
-import torch.nn.functional as F
 from torchvision.utils import make_grid
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
@@ -30,7 +27,7 @@ from models.mult_res_unet import MultiResNet
 from models.pan_unet import PAN_Unet
 from models.unet_pp import PP_Unet
 from models.unet_cbam import Unet_CBAM
-#from models.custom_unet import RPAN_Unet
+from models.custom_unet import TDMM_Unet_4
 from models.trans_unet import transUnet
 from models.t_unet import TransUnet
 from models.unet_aspp import UNet_ASPP
@@ -40,7 +37,7 @@ from models.unet_aspp import UNet_ASPP
 LEARNING_RATE = 0.001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 200+1
+NUM_EPOCHS = 300+1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -230,7 +227,7 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    model = DMM_Unet_4() # make sure to change the number of channels in the unet model file
+    model = TDMM_Unet_4() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model
