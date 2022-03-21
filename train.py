@@ -31,6 +31,7 @@ from models.custom_unet import TDMM_Unet_4
 from models.trans_unet import transUnet
 from models.t_unet import TransUnet
 from models.unet_aspp import UNet_ASPP
+from models.mptrans_unet import MPT_Net
 
 
 # hyperparameters
@@ -227,7 +228,7 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    model = TDMM_Unet_4() # make sure to change the number of channels in the unet model file
+    model = MPT_Net() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model

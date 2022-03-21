@@ -1,225 +1,157 @@
-
 # A Dense Multi-Modal U-Net
 import numpy as np
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import math
 
-class MultiHeadDense(nn.Module):
-    def __init__(self, d, bias=False):
-        super(MultiHeadDense, self).__init__()
-        self.weight = nn.Parameter(torch.Tensor(d, d))
-        if bias:
-            raise NotImplementedError()
-            self.bias = Parameter(torch.Tensor(d, d))
-        else:
-            self.register_parameter('bias', None)
-        self.reset_parameters()
+def positional_encoding_2d(d_model, height, width, device):
+    """
+    reference: wzlxjtu/PositionalEncoding2D
+    :param d_model: dimension of the model
+    :param height: height of the positions
+    :param width: width of the positions
+    :return: d_model*height*width position matrix
+    """
+    if d_model % 4 != 0:
+        raise ValueError("Cannot use sin/cos positional encoding with "
+                        "odd dimension (got dim={:d})".format(d_model))
+    pe = torch.zeros(d_model, height, width, device=device)
 
-    def reset_parameters(self) -> None:
-        nn.init.kaiming_uniform_(self.weight, a=math.sqrt(5))
-        if self.bias is not None:
-            fan_in, _ = nn.init._calculate_fan_in_and_fan_out(self.weight)
-            bound = 1 / math.sqrt(fan_in)
-            nn.init.uniform_(self.bias, -bound, bound)
+    # Each dimension use half of d_model
+    d_model = int(d_model / 2)
+    div_term = torch.exp(torch.arange(0., d_model, 2, device=device) *
+                        -(math.log(10000.0) / d_model))
+    pos_w = torch.arange(0., width, device=device).unsqueeze(1)
+    pos_h = torch.arange(0., height, device=device).unsqueeze(1)
+    pe[0:d_model:2, :, :] = torch.sin(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[1:d_model:2, :, :] = torch.cos(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[d_model::2, :, :] = torch.sin(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+    pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+    return pe
 
-    def forward(self, x):
-        # x:[b, h*w, d]
-        b, wh, d = x.size()
-        x = torch.bmm(x, self.weight.repeat(b, 1, 1))
-        # x = F.linear(x, self.weight, self.bias)
-
-        del b
-
-        return x
+def attention(q, k, v, d_k, mask=None, dropout=None):   
+    scores = torch.matmul(q, k.transpose(-2, -1)) /  math.sqrt(d_k)
+    scores = F.softmax(scores, dim=-1)
+    
+    if dropout is not None:
+        scores = dropout(scores)
+        
+    output = torch.matmul(scores, v)
+    return output
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self):
-        super(MultiHeadAttention, self).__init__()
+    def __init__(self, heads, d_model, dropout = 0.0):
+        super().__init__()
+        
+        self.d_model = d_model
+        self.d_k = d_model // heads
+        self.h = heads
+        
+        self.q_linear = nn.Linear(d_model, d_model)
+        self.v_linear = nn.Linear(d_model, d_model)
+        self.k_linear = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(dropout)
+        self.out = nn.Linear(d_model, d_model)
+    
+    def forward(self, q, k, v, mask=None):
+        
+        bs = q.size(0)
+        
+        # perform linear operation and split into h heads
+        
+        k = self.k_linear(k).view(bs, -1, self.h, self.d_k)
+        q = self.q_linear(q).view(bs, -1, self.h, self.d_k)
+        v = self.v_linear(v).view(bs, -1, self.h, self.d_k)
+        
+        # transpose to get dimensions bs * h * sl * d_model       
+        k = k.transpose(1,2)
+        q = q.transpose(1,2)
+        v = v.transpose(1,2)
 
-    def positional_encoding_2d(self, d_model, height, width):
-        """
-        reference: wzlxjtu/PositionalEncoding2D
-        :param d_model: dimension of the model
-        :param height: height of the positions
-        :param width: width of the positions
-        :return: d_model*height*width position matrix
-        """
-        if d_model % 4 != 0:
-            raise ValueError("Cannot use sin/cos positional encoding with "
-                             "odd dimension (got dim={:d})".format(d_model))
-        pe = torch.zeros(d_model, height, width)
-        try:
-            pe = pe.to(torch.device("cuda:0"))
-        except RuntimeError:
-            pass
-        # Each dimension use half of d_model
-        d_model = int(d_model / 2)
-        div_term = torch.exp(
-            torch.arange(0., d_model, 2) * -(math.log(10000.0) / d_model))
-        pos_w = torch.arange(0., width).unsqueeze(1)
-        pos_h = torch.arange(0., height).unsqueeze(1)
-        pe[0:d_model:2, :, :] = torch.sin(pos_w * div_term).transpose(
-            0, 1).unsqueeze(1).repeat(1, height, 1)
-        pe[1:d_model:2, :, :] = torch.cos(pos_w * div_term).transpose(
-            0, 1).unsqueeze(1).repeat(1, height, 1)
-        pe[d_model::2, :, :] = torch.sin(pos_h * div_term).transpose(
-            0, 1).unsqueeze(2).repeat(1, 1, width)
-        pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(
-            0, 1).unsqueeze(2).repeat(1, 1, width)
-        return pe
-
-    def forward(self, x):
-        raise NotImplementedError()
-
-
-class PositionalEncoding2D(nn.Module):
-    def __init__(self, channels):
-        """
-        :param channels: The last dimension of the tensor you want to apply pos emb to.
-        """
-        super(PositionalEncoding2D, self).__init__()
-        channels = int(np.ceil(channels / 2))
-        self.channels = channels
-        inv_freq = 1. / (10000
-                         **(torch.arange(0, channels, 2).float() / channels))
-        self.register_buffer('inv_freq', inv_freq)
-
-    def forward(self, tensor):
-        """
-        :param tensor: A 4d tensor of size (batch_size, x, y, ch)
-        :return: Positional Encoding Matrix of size (batch_size, x, y, ch)
-        """
-        if len(tensor.shape) != 4:
-            raise RuntimeError("The input tensor has to be 4d!")
-        batch_size, x, y, orig_ch = tensor.shape
-        pos_x = torch.arange(x,
-                             device=tensor.device).type(self.inv_freq.type())
-        pos_y = torch.arange(y,
-                             device=tensor.device).type(self.inv_freq.type())
-        sin_inp_x = torch.einsum("i,j->ij", pos_x, self.inv_freq)
-        sin_inp_y = torch.einsum("i,j->ij", pos_y, self.inv_freq)
-        emb_x = torch.cat((sin_inp_x.sin(), sin_inp_x.cos()),
-                          dim=-1).unsqueeze(1)
-        emb_y = torch.cat((sin_inp_y.sin(), sin_inp_y.cos()), dim=-1)
-        emb = torch.zeros((x, y, self.channels * 2),
-                          device=tensor.device).type(tensor.type())
-        emb[:, :, :self.channels] = emb_x
-        emb[:, :, self.channels:2 * self.channels] = emb_y
-
-        return emb[None, :, :, :orig_ch].repeat(batch_size, 1, 1, 1)
-
-
-class PositionalEncodingPermute2D(nn.Module):
-    def __init__(self, channels):
-        """
-        Accepts (batchsize, ch, x, y) instead of (batchsize, x, y, ch)        
-        """
-        super(PositionalEncodingPermute2D, self).__init__()
-        self.penc = PositionalEncoding2D(channels)
-
-    def forward(self, tensor):
-        tensor = tensor.permute(0, 2, 3, 1)
-        enc = self.penc(tensor)
-        return enc.permute(0, 3, 1, 2)
-
-
-class MultiHeadSelfAttention(MultiHeadAttention):
-    def __init__(self, channel):
-        super(MultiHeadSelfAttention, self).__init__()
-        self.query = MultiHeadDense(channel, bias=False)
-        self.key = MultiHeadDense(channel, bias=False)
-        self.value = MultiHeadDense(channel, bias=False)
-        self.softmax = nn.Softmax(dim=1)
-        self.pe = PositionalEncodingPermute2D(channel)
-
+        # calculate attention using function we will define next
+        scores = attention(q, k, v, self.d_k, mask, self.dropout)
+        
+        # concatenate heads and put through final linear layer
+        concat = scores.transpose(1,2).contiguous()\
+        .view(bs, -1, self.d_model)
+        
+        
+    
+        return self.out(concat)
+    
+class MHSABlock(nn.Module):
+    def __init__(self, heads, d_model, dropout = 0.0, pos_enc = True):
+        super().__init__()
+        self.attention = MultiHeadAttention(heads, d_model, dropout)
+        self.pos_enc = pos_enc
+        
     def forward(self, x):
         b, c, h, w = x.size()
-        # pe = self.positional_encoding_2d(c, h, w)
-        pe = self.pe(x)
-        x = x + pe
-        x = x.reshape(b, c, h * w).permute(0, 2, 1)  #[b, h*w, d]
-        Q = self.query(x)
-        K = self.key(x)
-        A = self.softmax(torch.bmm(Q, K.permute(0, 2, 1)) / math.sqrt(c))  #[b, h*w, h*w]
 
-        del Q , K
+        x2 = x        
+        if self.pos_enc:
+            pe = positional_encoding_2d(c, h, w, x.device)
+            x2 = x2 + pe
 
-        V = self.value(x)
-        x = torch.bmm(A, V).permute(0, 2, 1).reshape(b, c, h, w)
+        x2 = x2.reshape(b, c, h*w).permute(0, 2, 1)
 
-        del A,V
-
-        return x
-
-
-class MultiHeadCrossAttention(MultiHeadAttention):
-    def __init__(self, channelY, channelS):
-        super(MultiHeadCrossAttention, self).__init__()
-
-        self.Sconv = nn.Sequential(
-            nn.MaxPool2d(2), nn.Conv2d(channelS, channelS, kernel_size=1),
-            nn.BatchNorm2d(channelS), nn.ReLU(inplace=True))
-
-        self.Yconv = nn.Sequential(
-            nn.Conv2d(channelY, channelS, kernel_size=1),
-            nn.BatchNorm2d(channelS), nn.ReLU(inplace=True))
-
-        self.query = MultiHeadDense(channelS, bias=False)
-        self.key = MultiHeadDense(channelS, bias=False)
-        self.value = MultiHeadDense(channelS, bias=False)
-
-        self.conv = nn.Sequential(
-            nn.Conv2d(channelS, channelS, kernel_size=1),
-            nn.BatchNorm2d(channelS), nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True))
+        att = self.attention(x2, x2, x2).permute(0, 2, 1).reshape(b, c, h, w)
         
+        return att
+
+class MHCABlock(nn.Module):
+    def __init__(self, heads, channels, dropout = 0.0, pos_enc = True):
+        super().__init__()
+        self.pos_enc = pos_enc
+
+        self.mha = MultiHeadAttention(heads, channels, dropout)
+
+        #VERIFY
+        self.conv_S = nn.Sequential( 
+            nn.MaxPool2d(2),
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+        )
+        self.conv_Y = nn.Sequential(
+            nn.Conv2d(channels * 2, channels, kernel_size=1, stride=1, bias=False), 
+            nn.BatchNorm2d(channels),
+            nn.ReLU(inplace=True),
+        )
+        self.block_Z = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.Sigmoid(),
+            nn.ConvTranspose2d(channels, channels, kernel_size=2, stride=2),
+        )
+
         self.Yconv2 = nn.Sequential(
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
-            nn.Conv2d(channelY, channelY, kernel_size=3, padding=1),
-            nn.Conv2d(channelY, channelS, kernel_size=1),
-            nn.BatchNorm2d(channelS), nn.ReLU(inplace=True))
-
-        self.softmax = nn.Softmax(dim=1)
-
-        self.Spe = PositionalEncodingPermute2D(channelS)
-        
-        self.Ype = PositionalEncodingPermute2D(channelY)
+            nn.Conv2d(channels * 2, channels * 2, kernel_size=3, padding=1),
+            nn.Conv2d(channels * 2, channels, kernel_size=1),
+            nn.BatchNorm2d(channels), nn.ReLU(inplace=True))
 
     def forward(self, Y, S):
-        _, Sc, _, _ = S.size()
-        Yb, _, Yh, Yw = Y.size()
-        # Spe = self.positional_encoding_2d(Sc, Sh, Sw)
-        Spe = self.Spe(S)
-        S = S + Spe
-        S1 = self.Sconv(S).reshape(Yb, Sc, Yh * Yw).permute(0, 2, 1)
-        V = self.value(S1)
-        # Ype = self.positional_encoding_2d(Yc, Yh, Yw)
+        Sb, Sc, Sh, Sw = S.size()
+        Yb, Yc, Yh, Yw = Y.size()
 
-        del S1
-
-        Ype = self.Ype(Y)
-        Y = Y + Ype
-        Y1 = self.Yconv(Y).reshape(Yb, Sc, Yh * Yw).permute(0, 2, 1)
         Y2 = self.Yconv2(Y)
 
-        del Y
+        if self.pos_enc:
+            S = S + positional_encoding_2d(Sc, Sh, Sw, device=S.device)
+            Y = Y + positional_encoding_2d(Yc, Yh, Yw, device=Y.device)
 
-        Q = self.query(Y1)
-        K = self.key(Y1)
+        V = self.conv_S(S).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+        KQ = self.conv_Y(Y).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
 
-        del Y1
+        Z = self.mha(KQ, KQ, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
 
-        A = self.softmax(torch.bmm(Q, K.permute(0, 2, 1)) / math.sqrt(Sc))
-        x = torch.bmm(A, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
+        del KQ, V, Yb, Sc, Yh, Yw
 
-        del Q, K, A, V , Yb, Sc, Yh, Yw
+        Z = self.block_Z(Z)
 
-        Z = self.conv(x)
-
-        del x
-
-        Z = Z * S
+        Z =  Z * S
 
         del S
 
@@ -228,6 +160,7 @@ class MultiHeadCrossAttention(MultiHeadAttention):
         del Y2
 
         return Z
+        
 
 def croppCenter(tensorToCrop,finalShape):
     org_shape = tensorToCrop.shape
@@ -295,9 +228,9 @@ class UpBlock2d(nn.Module):
         return x
 
 
-class TDMM_Unet_4(nn.Module):
+class MPT_Net(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, num_of_features = 32):
-        super(TDMM_Unet_4,self).__init__()
+        super(MPT_Net,self).__init__()
 
         self.in_dim = in_channels
         self.out_dim = num_of_features
@@ -364,32 +297,36 @@ class TDMM_Unet_4(nn.Module):
 
         # ~~~ BRIDGE ~~~ #
         self.bridge = ConvBlock2d(self.out_dim * 60, self.out_dim * 16 )
-        self.mhsa = MultiHeadSelfAttention(self.out_dim * 16)
+        self.mhsa = MHSABlock(1,self.out_dim * 16)  
 
         # ~~~ DECODER PATH ~~~ #
 
         
-
-        self.mhca1 = MultiHeadCrossAttention(self.out_dim * 16,self.out_dim * 8)
+        
+        self.mhca1 = MHCABlock(1,self.out_dim * 8)
         self.conv1 = nn.Conv2d(self.out_dim * 16, self.out_dim * 8, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(self.out_dim * 8)
 
-        self.mhca2 = MultiHeadCrossAttention(self.out_dim * 8,self.out_dim * 4)
+        self.mhca2 = MHCABlock(1,self.out_dim * 4)
         self.conv2 = nn.Conv2d(self.out_dim * 8, self.out_dim * 4, 3, padding=1, bias=False)
         self.norm2 = nn.BatchNorm2d(self.out_dim * 4)
 
-        self.mhca3 = MultiHeadCrossAttention(self.out_dim * 4,self.out_dim * 2)
+        self.mhca3 = MHCABlock(1,self.out_dim * 2)
         self.conv3 = nn.Conv2d(self.out_dim * 4, self.out_dim * 2, 3, padding=1, bias=False)
         self.norm3 = nn.BatchNorm2d(self.out_dim * 2)
 
-        self.mhca4 = MultiHeadCrossAttention(self.out_dim * 2 ,self.out_dim * 1)
+        self.mhca4 = MHCABlock(1,self.out_dim * 1)
         self.conv4 = nn.Conv2d(self.out_dim * 2, self.out_dim * 1, 3, padding=1, bias=False)
         self.norm4 = nn.BatchNorm2d(self.out_dim * 1)
+        
 
         self.upLayer1 = UpBlock2d(self.out_dim * 16, self.out_dim * 8)
         self.upLayer2 = UpBlock2d(self.out_dim * 8, self.out_dim * 4)
         self.upLayer3 = UpBlock2d(self.out_dim * 4, self.out_dim * 2)
+
         self.upLayer4 = UpBlock2d(self.out_dim * 2, self.out_dim * 1)
+
+        #self.upLayer4 = ConvBlock2d(self.out_dim * 2, self.out_dim * 1)
 
 
         # ~~~ OUTPUT ~~~ #
@@ -528,6 +465,7 @@ class TDMM_Unet_4(nn.Module):
 
         #"""
         x = self.mhca1(y,skip_1)
+        print(x.shape)
         x = self.conv1(x)
         x = self.norm1(x)
 
@@ -545,9 +483,10 @@ class TDMM_Unet_4(nn.Module):
         x = self.mhca4(x,skip_4)
         x = self.conv4(x)
         x = self.norm4(x)
-
-        print("YO")
         """
+
+        #print("YO")
+        #"""
 
         """
         x = self.upLayer1(y, skip_1)
@@ -555,7 +494,9 @@ class TDMM_Unet_4(nn.Module):
         x = self.upLayer3(x, skip_3)
         x = self.upLayer4(x, skip_4)
         """
-        x = self.upLayer4(x, skip_4)
+
+        
+        x = self.upLayer4(x,skip_4)
         
         return self.out(x)
 
@@ -567,7 +508,7 @@ if __name__ == "__main__":
     
     
     
-    net = TDMM_Unet_4(1, num_classes)
+    net = MPT_Net(1, num_classes)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
