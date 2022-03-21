@@ -304,26 +304,21 @@ class MPT_Net(nn.Module):
         
         
         self.mhca1 = MHCABlock(1,self.out_dim * 8)
-        self.conv1 = nn.Conv2d(self.out_dim * 16, self.out_dim * 8, 3, padding=1, bias=False)
-        self.norm1 = nn.BatchNorm2d(self.out_dim * 8)
+        self.conv1 = ConvBlock2d(self.out_dim * 16 , self.out_dim * 8)
 
         self.mhca2 = MHCABlock(1,self.out_dim * 4)
-        self.conv2 = nn.Conv2d(self.out_dim * 8, self.out_dim * 4, 3, padding=1, bias=False)
-        self.norm2 = nn.BatchNorm2d(self.out_dim * 4)
-
+        self.conv2 = ConvBlock2d(self.out_dim * 8 , self.out_dim * 4)
+        
         self.mhca3 = MHCABlock(1,self.out_dim * 2)
-        self.conv3 = nn.Conv2d(self.out_dim * 4, self.out_dim * 2, 3, padding=1, bias=False)
-        self.norm3 = nn.BatchNorm2d(self.out_dim * 2)
-
+        self.conv3 = ConvBlock2d(self.out_dim * 4 , self.out_dim * 2)
+        
         self.mhca4 = MHCABlock(1,self.out_dim * 1)
-        self.conv4 = nn.Conv2d(self.out_dim * 2, self.out_dim * 1, 3, padding=1, bias=False)
-        self.norm4 = nn.BatchNorm2d(self.out_dim * 1)
+        self.conv4 = ConvBlock2d(self.out_dim * 2 , self.out_dim * 1)
         
 
         self.upLayer1 = UpBlock2d(self.out_dim * 16, self.out_dim * 8)
         self.upLayer2 = UpBlock2d(self.out_dim * 8, self.out_dim * 4)
         self.upLayer3 = UpBlock2d(self.out_dim * 4, self.out_dim * 2)
-
         self.upLayer4 = UpBlock2d(self.out_dim * 2, self.out_dim * 1)
 
         #self.upLayer4 = ConvBlock2d(self.out_dim * 2, self.out_dim * 1)
@@ -465,19 +460,13 @@ class MPT_Net(nn.Module):
 
         #"""
         x = self.mhca1(y,skip_1)
-        print(x.shape)
         x = self.conv1(x)
-        x = self.norm1(x)
-
+        
         x = self.mhca2(x,skip_2)
         x = self.conv2(x)
-        x = self.norm2(x)
-
+        
         x = self.mhca3(x,skip_3)
         x = self.conv3(x)
-        x = self.norm3(x)
-
-        #print("YO")
         
         """
         x = self.mhca4(x,skip_4)
@@ -485,7 +474,6 @@ class MPT_Net(nn.Module):
         x = self.norm4(x)
         """
 
-        #print("YO")
         #"""
 
         """
