@@ -112,12 +112,12 @@ class MHCABlock(nn.Module):
             nn.MaxPool2d(2),
             nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
             nn.BatchNorm2d(channels),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.ReLU(inplace=True),
         )
         self.conv_Y = nn.Sequential(
             nn.Conv2d(channels * 2, channels, kernel_size=1, stride=1, bias=False), 
             nn.BatchNorm2d(channels),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.ReLU(inplace=True),
         )
         self.block_Z = nn.Sequential(
             nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
@@ -130,7 +130,7 @@ class MHCABlock(nn.Module):
             nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
             nn.Conv2d(channels * 2, channels * 2, kernel_size=3, padding=1),
             nn.Conv2d(channels * 2, channels, kernel_size=1),
-            nn.BatchNorm2d(channels), nn.LeakyReLU(negative_slope=0.2, inplace=True))
+            nn.BatchNorm2d(channels), nn.ReLU(inplace=True))
 
     def forward(self, Y, S):
         Sb, Sc, Sh, Sw = S.size()
@@ -184,14 +184,14 @@ class ConvBlock2d(nn.Module):
             self.conv1 = nn.Sequential(
                 nn.Conv2d(in_ch, out_ch, kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm2d(out_ch),
-                nn.LeakyReLU(negative_slope=0.2, inplace=True)
+                nn.ReLU(inplace=True)
                 
             )
 
             self.conv2 = nn.Sequential(
                 nn.Conv2d(out_ch, out_ch, kernel_size=3, stride=1, padding=1),
                 nn.BatchNorm2d(out_ch),
-                nn.LeakyReLU(negative_slope=0.2, inplace=True)
+                nn.ReLU(inplace=True)
                 
             )
 
@@ -207,7 +207,7 @@ class ConvTrans2d(nn.Module):
         self.conv1 = nn.Sequential(
             nn.ConvTranspose2d(in_ch, out_ch, kernel_size=3, stride=2, padding=1, output_padding=1, dilation=1),
             nn.BatchNorm2d(out_ch),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True)
+            nn.ReLU(inplace=True)
             
         )
 
@@ -239,9 +239,9 @@ class UpBlockNoSkip(nn.Module):
         return x
 
 
-class MPT_Net(nn.Module):
+class MMA_Net(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, num_of_features = 32):
-        super(MPT_Net,self).__init__()
+        super(MMA_Net,self).__init__()
 
         self.in_dim = in_channels
         self.out_dim = num_of_features
@@ -345,7 +345,8 @@ class MPT_Net(nn.Module):
         m2 = input[:,1:2,:,:]
         m3 = input[:,2:3,:,:]
         m4 = input[:,3:4,:,:]
-    
+
+
 
         # ~~~ ENCODING ~~~ #
         # ~~~ L1 ~~~ #
@@ -476,10 +477,10 @@ class MPT_Net(nn.Module):
         x = self.mhca3(x,skip_3)
         x = self.conv3(x)
         
-        """
         x = self.mhca4(x,skip_4)
         x = self.conv4(x)
-        x = self.norm4(x)
+
+        #x = self.norm4(x)
         """
 
         #"""
@@ -492,7 +493,7 @@ class MPT_Net(nn.Module):
         """
 
         
-        x = self.upLayer4(x)
+        #x = self.upLayer4(x)
         
         return self.out(x)
 
@@ -504,10 +505,10 @@ if __name__ == "__main__":
     
     
     
-    net = MPT_Net(1, num_classes)
+    net = MMA_Net(1, num_classes)
     
     # torch.save(net.state_dict(), 'model.pth')
-    CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
+    CT = torch.randn(batch_size, 4, 128, 128)    # Batchsize, modal, hight,
 
     print("Input:", CT.shape)
     if torch.cuda.is_available():

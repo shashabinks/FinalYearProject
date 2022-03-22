@@ -14,7 +14,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from utils import save_predictions_as_imgs
 from torch.optim.lr_scheduler import StepLR
-import timm
+import os
 
 from torchinfo import summary
 
@@ -32,14 +32,15 @@ from models.trans_unet import transUnet
 from models.t_unet import TransUnet
 from models.unet_aspp import UNet_ASPP
 from models.mptrans_unet import MPT_Net
+from models.mma_unet import MMA_Net
 
 
 # hyperparameters
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 300+1
-NUM_WORKERS = 4
+NUM_EPOCHS = 200+1
+NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
@@ -51,6 +52,8 @@ metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss
       
 # define training function
 def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
+
+    best_score = -1.0
     
     # iterate through the epochs
     for epoch in range(0,num_of_epochs):
@@ -94,11 +97,21 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         print(f"Epoch: {epoch}")
         print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce}")
         
-        check_accuracy(loaders[1], model, device=DEVICE)
+        epoch_val_acc = check_accuracy(loaders[1], model, device=DEVICE)
 
-        # view images after 100 epochs
+        if epoch_val_acc > best_score:
+            print("Best Accuracy so far!, Saving model...")
+            best_score = epoch_val_acc
+            torch.save(model.state_dict(), os.path.join("Weights/", "best_weights.pth"))
+
+
+        # view images after all epochs
         if epoch % (NUM_EPOCHS-1) == 0:
             save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
+
+            print("Final Epoch!, Saving model...")
+
+            torch.save(model.state_dict(), os.path.join("Weights/", "final_weights.pth"))
         
         
 # calculate dice coefficient/loss
@@ -180,6 +193,8 @@ def check_accuracy(loader, model, device="cuda"):
     print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce}")
     
     model.train()
+
+    return val_dsc
             
 
 
@@ -228,7 +243,7 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    model = MPT_Net() # make sure to change the number of channels in the unet model file
+    model = MMA_Net() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model

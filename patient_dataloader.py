@@ -62,6 +62,7 @@ class train_ISLES2018_loader(Dataset):
                     slices, gt_slice = self.transform(slices,gt_2d)
                     
                     combined = torch.cat(tuple(slices), dim=0) # concatenate all the slices to form 5 channel, input has to be a set
+                    
                 
                     self.samples.append((combined, gt_slice))  # append tuples of combined slices and ground truth masks, this makes it easier to later compare the pred/actual
                       
@@ -83,10 +84,16 @@ class train_ISLES2018_loader(Dataset):
         
         gt = TF.to_pil_image(gt)
 
-        resize = torchvision.transforms.Resize(size=(256, 256))
-        image = resize(image)
-        gt=  resize(gt)
+
+
+        # resize slices
+        for i in range(len(slices)):
+            image = slices[i]
+            image = image.resize((128, 128))
+            slices[i] = image
         
+        gt =  gt.resize((128, 128))
+
         if augment:
             # flip horizontally randomly
             if random.random() > 0.5:
@@ -124,7 +131,7 @@ class train_ISLES2018_loader(Dataset):
         
         gt = TF.to_tensor(gt)
 
-        
+    
         return slices, gt
       
     # this bit is a huge bottleneck
@@ -194,9 +201,14 @@ class val_ISLES2018_loader(Dataset):
         
         gt = TF.to_pil_image(gt)
 
-        resize = torchvision.transforms.Resize(size=(256, 256))
-        image = resize(image)
-        gt=  resize(gt)
+        
+        # resize slices
+        for i in range(len(slices)):
+            image = slices[i]
+            image = image.resize((128, 128))
+            slices[i] = image
+        
+        gt =  gt.resize((128, 128))
         
         # convert back to tensor/normalize
         for i in range(len(slices)):
