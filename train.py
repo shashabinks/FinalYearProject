@@ -243,7 +243,7 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    model = MMA_Net() # make sure to change the number of channels in the unet model file
+    model = UNet_2D() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model

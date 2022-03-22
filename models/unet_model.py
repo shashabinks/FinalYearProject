@@ -182,3 +182,21 @@ class UNet_2D(nn.Module):
         x = F.relu(self.norm16(x))
         
         return self.convEND(x)
+
+if __name__ == "__main__":
+    batch_size = 4
+    num_classes = 5
+    initial_kernels = 32
+
+    net = UNet_2D()
+    
+    # torch.save(net.state_dict(), 'model.pth')
+    CT = torch.randn(batch_size, 4, 128, 128)    # Batchsize, modal, hight,
+
+    print("Input:", CT.shape)
+    if torch.cuda.is_available():
+        net = net.cuda()
+        CT = CT.cuda()
+
+    segmentation_prediction = net(CT)
+    print("Output:",segmentation_prediction.shape)
