@@ -89,10 +89,10 @@ class train_ISLES2018_loader(Dataset):
         # resize slices
         for i in range(len(slices)):
             image = slices[i]
-            image = image.resize((128, 128))
+            image = image.resize((256, 256))
             slices[i] = image
         
-        gt =  gt.resize((128, 128))
+        gt =  gt.resize((256, 256))
 
         if augment:
             # flip horizontally randomly
@@ -205,10 +205,10 @@ class val_ISLES2018_loader(Dataset):
         # resize slices
         for i in range(len(slices)):
             image = slices[i]
-            image = image.resize((128, 128))
+            image = image.resize((256, 256))
             slices[i] = image
         
-        gt =  gt.resize((128, 128))
+        gt =  gt.resize((256, 256))
         
         # convert back to tensor/normalize
         for i in range(len(slices)):

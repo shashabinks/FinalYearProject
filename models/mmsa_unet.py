@@ -71,6 +71,8 @@ class MultiHeadAttention(nn.Module):
 
         # calculate attention using function we will define next
         scores = attention(q, k, v, self.d_k, mask, self.dropout)
+
+        del k,q,v
         
         # concatenate heads and put through final linear layer
         concat = scores.transpose(1,2).contiguous()\
@@ -89,14 +91,19 @@ class MHSABlock(nn.Module):
     def forward(self, x):
         b, c, h, w = x.size()
 
-        x2 = x        
+        x2 = x     
+           
         if self.pos_enc:
             pe = positional_encoding_2d(c, h, w, x.device)
+            del x 
             x2 = x2 + pe
+            del pe 
 
         x2 = x2.reshape(b, c, h*w).permute(0, 2, 1)
 
         att = self.attention(x2, x2, x2).permute(0, 2, 1).reshape(b, c, h, w)
+
+        del x2
         
         return att
 
@@ -239,9 +246,9 @@ class UpBlockNoSkip(nn.Module):
         return x
 
 
-class MMA_Net(nn.Module):
+class MMSA_Net(nn.Module):
     def __init__(self, in_channels=1, out_channels=1, num_of_features = 32):
-        super(MMA_Net,self).__init__()
+        super(MMSA_Net,self).__init__()
 
         self.in_dim = in_channels
         self.out_dim = num_of_features
@@ -308,33 +315,22 @@ class MMA_Net(nn.Module):
 
         # ~~~ BRIDGE ~~~ #
         self.bridge = ConvBlock2d(self.out_dim * 60, self.out_dim * 16 )
-        self.mhsa = MHSABlock(1,self.out_dim * 16)  
+        self.mhsa = MHSABlock(4,self.out_dim * 16) 
+        
+        # ~~~ SKIP ~~~ #
+
+        self.mhsa_layer1 = MHSABlock(1,self.out_dim * 8)  
+        self.mhsa_layer2 = MHSABlock(1,self.out_dim * 4)  
+        self.mhsa_layer3 = MHSABlock(1,self.out_dim * 2)  
+        self.mhsa_layer4 = MHSABlock(1,self.out_dim * 1)  
 
         # ~~~ DECODER PATH ~~~ #
+
 
         self.upLayer1 = UpBlock2d(self.out_dim * 16, self.out_dim * 8)
         self.upLayer2 = UpBlock2d(self.out_dim * 8, self.out_dim * 4)
         self.upLayer3 = UpBlock2d(self.out_dim * 4, self.out_dim * 2)
         self.upLayer4 = UpBlock2d(self.out_dim * 2, self.out_dim * 1)
-        
-        
-        self.mhca1 = MHCABlock(1,self.out_dim * 8)
-        self.conv1 = ConvBlock2d(self.out_dim * 16 , self.out_dim * 8)
-
-        self.mhca2 = MHCABlock(1,self.out_dim * 4)
-        self.conv2 = ConvBlock2d(self.out_dim * 8 , self.out_dim * 4)
-        
-        self.mhca3 = MHCABlock(1,self.out_dim * 2)
-        self.conv3 = ConvBlock2d(self.out_dim * 4 , self.out_dim * 2)
-        
-        self.mhca4 = MHCABlock(1,self.out_dim * 1)
-        self.conv4 = ConvBlock2d(self.out_dim * 2 , self.out_dim * 1)
-        
-        #self.upLayer4 = UpBlockNoSkip(self.out_dim * 2, self.out_dim * 1)
-
-        
-        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
-        #self.upLayer4 = ConvBlock2d(self.out_dim * 2, self.out_dim * 1)
 
 
         # ~~~ OUTPUT ~~~ #
@@ -350,11 +346,7 @@ class MMA_Net(nn.Module):
         m3 = input[:,2:3,:,:]
         m4 = input[:,3:4,:,:]
 
-        # pre pool images to reduce size here
-        m1 = self.pool_1_0(m1)
-        m2 = self.pool_1_0(m2)
-        m3 = self.pool_1_0(m3)
-        m4 = self.pool_1_0(m4)
+
 
         # ~~~ ENCODING ~~~ #
         # ~~~ L1 ~~~ #
@@ -465,9 +457,9 @@ class MMA_Net(nn.Module):
         inputBridge = torch.cat((inputBridge, croppCenter(input_4th_0, inputBridge.shape)), dim=1)
 
         bridge = self.bridge(inputBridge)
+        x = self.mhsa(bridge)
 
-        # after rebuild, apply mhsa module
-        y = self.mhsa(bridge)
+        
 
         # ~~~~~~ Decoding path ~~~~~~~  #
         skip_1 = (down_4_0 + down_4_1 + down_4_2 + down_4_3) / 4.0  # most bottom one
@@ -475,35 +467,17 @@ class MMA_Net(nn.Module):
         skip_3 = (down_2_0 + down_2_1 + down_2_2 + down_2_3) / 4.0
         skip_4 = (down_1_0 + down_1_1 + down_1_2 + down_1_3) / 4.0      # top one
 
-        
-        x = self.mhca1(y,skip_1)
-        x = self.conv1(x)
-        
-        x = self.mhca2(x,skip_2)
-        x = self.conv2(x)
-        
-        x = self.mhca3(x,skip_3)
-        x = self.conv3(x)
-        
-        x = self.mhca4(x,skip_4)
-        x = self.conv4(x)
 
-        #x = self.norm4(x)
-        
-
-        #"""
-
-        
-        #x = self.upLayer1(y, skip_1)
-        #x = self.upLayer2(x, skip_2)
-        #x = self.upLayer3(x, skip_3)
-        #x = self.upLayer4(x, skip_4)
+        x = self.upLayer1(x, skip_1)
+        x = self.upLayer2(x, skip_2)
+        x = self.upLayer3(x, skip_3)
+        x = self.upLayer4(x, skip_4)
         
 
         
         #x = self.upLayer4(x)
         
-        return self.upsample(self.out(x))
+        return self.out(x)
 
 
 if __name__ == "__main__":
@@ -513,7 +487,7 @@ if __name__ == "__main__":
     
     
     
-    net = MMA_Net(1, num_classes)
+    net = MMSA_Net(1, num_classes)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,

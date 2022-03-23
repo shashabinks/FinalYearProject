@@ -62,7 +62,7 @@ class Attention_block(nn.Module):
         return out
 
 class UNet_Attention(nn.Module):
-    def __init__(self, img_ch=5, output_ch=1):
+    def __init__(self, img_ch=4, output_ch=1):
         super(UNet_Attention, self).__init__()
 
         n1 = 32

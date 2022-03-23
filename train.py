@@ -36,7 +36,7 @@ from models.mma_unet import MMA_Net
 
 
 # hyperparameters
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
 NUM_EPOCHS = 200+1
@@ -243,7 +243,7 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    model = UNet_2D() # make sure to change the number of channels in the unet model file
+    model = DMM_Unet_4() # make sure to change the number of channels in the unet model file
     print(DEVICE)
 
     # change this when u change model

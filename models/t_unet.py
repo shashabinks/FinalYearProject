@@ -195,10 +195,10 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = TransUnet(in_channels=5,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
+    net = TransUnet(in_channels=4,img_dim=256,vit_blocks=1,vit_dim_linear_mhsa_block=512,classes=1)
     
     # torch.save(net.state_dict(), 'model.pth')
-    CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
+    CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
 
     print("Input:", CT.shape)
     if torch.cuda.is_available():
