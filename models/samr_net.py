@@ -222,10 +222,10 @@ def weights_init_normal(m):
         init.constant_(m.bias.data, 0.0)
 
 
-class MultiResNet(nn.Module):
+class SAMRnet(nn.Module):
    
-    def __init__(self, n_classes=1, in_channel=4):
-       super(MultiResNet, self).__init__()
+    def __init__(self, n_classes=1, in_channel=5):
+       super(SAMRnet, self).__init__()
        
        f=32
        filters = [f, f*2, f*4, f*8, f*16]
@@ -282,6 +282,7 @@ class MultiResNet(nn.Module):
        conv4 = self.respath4(conv4)
 
        center = self.mresblock5(maxpool4) # bottleneck, maybe add a attention module here?
+       center = self.mhsa(center)
 
        up4 = torch.cat((self.up4(center),conv4),dim=1)
        up4 = self.mresblock6(up4)
@@ -306,10 +307,10 @@ if __name__ == "__main__":
     
     
     
-    net = MultiResNet()
+    net = SAMRnet()
     
     # torch.save(net.state_dict(), 'model.pth')
-    CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
+    CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
 
     print("Input:", CT.shape)
     if torch.cuda.is_available():

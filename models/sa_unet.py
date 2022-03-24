@@ -104,13 +104,13 @@ class MHSABlock(nn.Module):
         
         return att
 
-class UNet_2D(nn.Module):
+class SAUNet_2D(nn.Module):
     
     
     def __init__(self):
-        super(UNet_2D, self).__init__()
+        super(SAUNet_2D, self).__init__()
         # DOWN BLOCK 1 #
-        self.conv1 = nn.Conv2d(4, 32, 3, padding=1, bias=False)
+        self.conv1 = nn.Conv2d(5, 32, 3, padding=1, bias=False)
         self.norm1 = nn.BatchNorm2d(32)
         #relu
         self.conv2 = nn.Conv2d(32, 32, 3, padding=1, bias=False)
@@ -153,6 +153,8 @@ class UNet_2D(nn.Module):
         #relu
         self.convB2 = nn.Conv2d(512,512,3, padding=1, bias=False)
         self.normB2 = nn.BatchNorm2d(512)
+
+        self.mhsa = MHSABlock(1,512)
         
         
         #############
@@ -199,7 +201,7 @@ class UNet_2D(nn.Module):
         #self.mhsa_layer1 = MHSABlock(1,32 * 1)  
         #self.mhsa_layer2 = MHSABlock(1,32 * 2)  
         #self.mhsa_layer3 = MHSABlock(1,32 * 4)  
-        self.mhsa_layer4 = MHSABlock(1,32 * 8) 
+        #self.mhsa_layer4 = MHSABlock(1,32 * 8) 
         
         #1x1 Conv
         self.convEND = nn.Conv2d(32, 1, 1)
@@ -244,7 +246,7 @@ class UNet_2D(nn.Module):
         skip_1 = enc1
         skip_2 = enc2
         skip_3 = enc3
-        skip_4 = self.mhsa_layer4(enc4)
+        skip_4 = enc4
 
         
         #BOTTLENECK
@@ -253,6 +255,7 @@ class UNet_2D(nn.Module):
         x = self.convB2(x)
         x = F.relu(self.normB2(x))
         
+        x = self.mhsa(x)
         
         
         #### DECODER ####
@@ -296,7 +299,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = UNet_2D()
+    net = SAUNet_2D()
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,

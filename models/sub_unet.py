@@ -157,10 +157,10 @@ if __name__ == "__main__":
     
     
     
-    net = SubUNet(4,1)
+    net = SubUNet(5,1)
     
     # torch.save(net.state_dict(), 'model.pth')
-    CT = torch.randn(batch_size, 4, 256, 256)    # Batchsize, modal, hight,
+    CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
 
     print("Input:", CT.shape)
     if torch.cuda.is_available():
