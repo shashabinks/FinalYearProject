@@ -3,5 +3,6 @@ ISLES/
 UNET_2D/
 saved_images/
 Submissions/
-BlueCrystalJob/
+BCJob/
 Weights/
+imagenet21k_R50+ViT-B_16.npz

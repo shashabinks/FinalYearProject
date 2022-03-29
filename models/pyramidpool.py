@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import functional as F
 
 
-class PSPModule(nn.Module):
+class PPModule(nn.Module):
     def __init__(self, features, out_features=1024, sizes=(1, 2, 3, 6)):
         super().__init__()
         self.stages = []

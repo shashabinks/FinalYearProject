@@ -103,13 +103,18 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
         x = x.to(device=device)
         with torch.no_grad():
             preds = torch.sigmoid(model(x))
+            
+            
         
         if idx == 1 or idx == 2 or idx == 4 or idx == 6 or idx == 8:
             f, (ax2, ax3) = plt.subplots(1, 2, figsize=(10,20))
+
+            img = preds[0].cpu().squeeze().numpy()
             
-            ax2.imshow(preds[0].cpu().squeeze().numpy(), cmap = 'gray',label="Prediction")
+            ax2.imshow(img, cmap = 'gray',label="Prediction")
             ax3.imshow(y[0].squeeze(0), cmap= 'gray', label="Mask")
             #plt.legend()
             plt.show()
 
     model.train()
+    

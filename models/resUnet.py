@@ -24,9 +24,13 @@ class SResUnet(nn.Module):
     """Shallow Unet with ResNet18 or ResNet34 encoder.
     """
 
-    def __init__(self, *, pretrained=False, out_channels=1):
+    def __init__(self, *, pretrained=False, out_channels=1,freeze=False):
         super().__init__()
         self.encoder = torchvision.models.resnet34(pretrained=pretrained)
+
+        
+
+    
         self.encoder_layers = list(self.encoder.children())
         self.encoder.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
         self.conv1 = self.encoder.conv1
@@ -36,6 +40,14 @@ class SResUnet(nn.Module):
         self.block3 = self.encoder_layers[5]
         self.block4 = self.encoder_layers[6]
         self.block5 = self.encoder_layers[7]
+
+    
+        # freeze weights of last block
+        if freeze:
+            for child in self.encoder_layers[7].children():
+                for param in child.parameters():
+                    param.requires_grad = False
+                    
 
         self.up_conv6 = up_conv(512, 512)
         self.conv6 = double_conv(512 + 256, 512)

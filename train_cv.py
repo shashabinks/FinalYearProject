@@ -3,7 +3,7 @@ from math import gamma
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
+import numpy as np
 from torch.autograd import Variable
 
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
@@ -11,19 +11,17 @@ from patient_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load
 #from patient_dataloader_mri import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import matplotlib.pyplot as plt
 import torch
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 import torch.nn as nn
-from torchvision.utils import make_grid
+
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from utils import save_predictions_as_imgs
+
 from torch.optim.lr_scheduler import StepLR
 import os
-import numpy as np
-from scipy.spatial.distance import directed_hausdorff
 
-from monai import metrics as mt
-from hausdorffDistance import HausdorffDistance
+
+from scipy.spatial.distance import directed_hausdorff
 
 # MODELS
 from models.DSAnet import UNet_2D
@@ -33,6 +31,7 @@ from models.trans_unet import transUnet
 from models.sa_unet import SAUNet_2D
 from models.resUnet import SResUnet
 from models.RPDnet import RPDNet
+
 # Training Hyperparameters for replication of work:
 # U-Net
 # Attention U-Net
@@ -47,10 +46,10 @@ from models.RPDnet import RPDNet
 
 
 # hyperparameters
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 50+1
+NUM_EPOCHS = 200+1
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -60,7 +59,19 @@ TRANSFORMER = False
 DEEP_SUPERVISION = False
 
 
-metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"train_focal":[],"val_dice":[],"train_loss":[],"val_loss":[],"val_focal":[]}
+metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[], 
+            "train_precision":[],"val_precision":[], "train_recall":[], "val_recall":[], "train_hd":[], "val_hd":[]}
+
+
+def reset_weights(m):
+  '''
+    Try resetting model weights to avoid
+    weight leakage.
+  '''
+  for layer in m.children():
+    if hasattr(layer, 'reset_parameters'):
+        #print(f'Reset trainable parameters of layer = {layer}')
+        layer.reset_parameters()
       
 # define training function
 def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
@@ -103,23 +114,31 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
             loss.backward()
             optimizer.step()
 
-        
+        #print(curr_metrics['hd'])
         # test validation dataset after each epoch
         train_loss = curr_metrics['loss'] / epoch_samples
         train_acc = curr_metrics["dice_coeff"] / epoch_samples
         train_bce = curr_metrics['bce'] / epoch_samples
-        train_focal = curr_metrics['focal_loss'] / epoch_samples
+        #train_precision = curr_metrics['precision'] / epoch_samples
+        #train_recall = curr_metrics['recall'] / epoch_samples
+        #train_hd = curr_metrics['hd'] / epoch_samples
+       
 
         metrics["train_loss"].append(train_loss)
         metrics["train_dice"].append(train_acc)
         metrics["train_bce"].append(train_bce)
-        metrics["train_focal"].append(train_focal)
+        #metrics["train_precision"].append(train_precision)
+        #metrics["train_recall"].append(train_recall)
+        #metrics["train_hd"].append(train_hd)
+        
         
         print(f"Epoch: {epoch}")
-        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce} Train Focal: {train_focal}")
+        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce}")
         
         epoch_val_acc = 0.0
 
+
+        # check validation
         if DEEP_SUPERVISION:
             epoch_val_acc = multi_check_accuracy(loaders[1], model, device=DEVICE)
 
@@ -135,19 +154,16 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         
         # view images after all epochs
         if epoch % (NUM_EPOCHS-1) == 0:
-            if DEEP_SUPERVISION:
-                view_images_multi(loaders[1], model, device=DEVICE)
-
-            else:
-                save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
-
             if epoch == NUM_EPOCHS - 1:
                 print("Final Epoch!, Saving model...")
 
                 torch.save(model.state_dict(), os.path.join("Weights/", "final_weights.pth"))
         
+        # check for decay
         if scheduler:
             scheduler.step()
+    
+    del loss
 
 
 def view_images_multi(loader, model, device="cuda"):
@@ -214,24 +230,25 @@ def focal_loss(pred, targets,alpha,gamma):
                        
     return focal_loss
     
-def compute_hausdorff(y_pred, y_true):
+def hausdorff(preds, targets):
     '''
-    get directed hausdorff
+    :param probs: 4 x 1 x 256 x 256
+    :param target:
+    :return:
     '''
 
-    shape = y_pred.shape
-    y_true = torch.squeeze(y_true).data.cpu().numpy()
-    y_pred = torch.squeeze(y_pred).data.cpu().numpy()
+    hd = 0.0
 
-    y_pred = np.reshape(y_pred, (shape[0],shape[1]))
+    # calculate the hausdorff distance for each individual image per batch
+    for i in range(0,preds.shape[0]):
+        output = preds[i, : , : , :].detach().cpu().squeeze().numpy()
+        segment = targets[i, : , : , :].detach().cpu().squeeze().numpy()
+        dh1 = directed_hausdorff(output, segment)[0]
+        dh2 = directed_hausdorff(segment, output)[0]
+        hd += np.max([dh1, dh2])
 
-
-    
-    hd1 = directed_hausdorff(y_pred, y_true)[0]
-    hd2 = directed_hausdorff(y_pred, y_true)[0]
-
-    return max(hd1, hd2)
-
+    # return the total hd for this batch of images
+    return hd 
 
 
 # separate this bit and move the dc loss function into the train.py file...
@@ -245,12 +262,9 @@ def calc_loss(pred, target, curr_metrics):
     pred = torch.sigmoid(pred)
 
     
-
-    #hd = compute_hausdorff(pred,target)
-
+    #hd_loss = hausdorff(pred,target)
     
-
-    actual_loss = focal_loss(pred,target,20,1)
+    #_, precision, recall = f1_score(pred,target)
     
     dice,dice_coeff = dc_loss(pred, target)
 
@@ -260,7 +274,10 @@ def calc_loss(pred, target, curr_metrics):
     curr_metrics['bce'] += bce.data.cpu().numpy() * target.size(0)
     curr_metrics['dice_coeff'] += dice_coeff.data.cpu().numpy() * target.size(0)
     curr_metrics['loss'] += loss.data.cpu().numpy() * target.size(0)
-    #curr_metrics['focal_loss'] += hd.data.cpu().numpy() * target.size(0)
+    #curr_metrics['precision'] += precision.data.cpu().numpy() * target.size(0)
+    #curr_metrics['recall'] += recall.data.cpu().numpy() * target.size(0)
+    #curr_metrics['hd'] += hd_loss 
+    
     
     return bce
 
@@ -315,14 +332,20 @@ def check_accuracy(loader, model, device="cuda"):
     val_dsc = curr_metrics['dice_coeff'] / epoch_samples
     val_bce = curr_metrics["bce"] / epoch_samples
     val_loss = curr_metrics['loss'] / epoch_samples
-    val_focal = curr_metrics['focal_loss'] / epoch_samples
+    #val_precision = curr_metrics['precision'] / epoch_samples
+    #val_recall = curr_metrics['recall'] / epoch_samples
+    val_hd = curr_metrics['hd'] / epoch_samples
+    
 
     metrics["val_loss"].append(val_loss)
     metrics["val_dice"].append(val_dsc)
     metrics["val_bce"].append(val_bce)
-    metrics["val_focal"].append(val_focal)
+    #metrics["val_precision"].append(val_precision)
+    #metrics["val_recall"].append(val_recall)
+    #metrics["val_hd"].append(val_hd)
     
-    print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce} Validation Focal: {val_focal}")
+    
+    print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce}")
     
     model.train()
 
@@ -355,6 +378,7 @@ def multi_check_accuracy(loader, model, device="cuda"):
     metrics["val_loss"].append(val_loss)
     metrics["val_dice"].append(val_dsc)
     metrics["val_bce"].append(val_bce)
+
     
     print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce}")
     
@@ -365,7 +389,115 @@ def multi_check_accuracy(loader, model, device="cuda"):
 
 
 if __name__ == "__main__":
-    torch.cuda.empty_cache()
+
+    plot_graph = False
+
+    # define the number of folds/epochs per fold
+    k_folds = 5
+    num_epochs = 1
+
+    results = {"train_dice" : [],"val_dice" : []}
+
+    torch.manual_seed(42)
+
+    # load data
+    directory = "ISLES/TRAINING"
+    dataset = load_data(directory)
+
+    # define modalities
+    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT']
+
+    # define k-fold cross validator
+    kfold = KFold(n_splits=k_folds, shuffle=True)
+
+    for fold, (train_ids,test_ids) in enumerate(kfold.split(dataset)):
+
+        
+        train_list = []
+        test_list = []
+
+        print(f'Fold {fold}')
+
+        # create list of indexes for each split
+        train_subsampler = torch.utils.data.SubsetRandomSampler(train_ids)
+        test_subsampler = torch.utils.data.SubsetRandomSampler(test_ids)
+
+        # loop through each id and create the test/valid set
+        for i in list(train_subsampler):
+            train_list.append(dataset[i])
+
+        for i in list(test_subsampler):
+            test_list.append(dataset[i])
+        
+        train_set = train_ISLES2018_loader(train_list, modalities)
+        print("Loaded Training Data...")
+        val_set = val_ISLES2018_loader(test_list, modalities)
+        print("Loaded Validation Data...")
+
+        print(len(train_set))
+        print(len(val_set))
+
+        # define model
+        #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
+        model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
+        
+        # send model to device (gpu)
+        model.to(DEVICE)
+
+        # define dataloaders
+        train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
+        valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
+
+        
+        # define optimizer
+        optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
+        scheduler = StepLR(optimizer, step_size=60, gamma=0.01)
+
+        # training
+        train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
+
+        # find mean dice coefficient of this fold and reset all data for next fold
+
+        mean_train_dice = np.mean(metrics["train_dice"])
+        mean_val_dice = np.mean(metrics["val_dice"])
+
+        results["train_dice"].append(mean_train_dice)
+        results["val_dice"].append(mean_val_dice)
+
+        
+
+        # optional plot function
+
+        if plot_graph:
+            
+            fig, (ax1, ax2) = plt.subplots(1, 2)
+        
+            ax1.plot(metrics["train_loss"],label="training bce loss")
+            ax1.plot(metrics["val_loss"], label="validation bce loss")
+            ax1.set_title("Loss")
+            ax1.legend(loc="upper right")
+            
+            ax2.plot(metrics["train_dice"],label="training dice")
+            ax2.plot(metrics["val_dice"], label="validation dice")
+            ax2.set_title("Dice Score")
+            ax2.legend(loc="upper right")
+
+            fig.savefig(f"fold_{fold}_ResNet34_trained.jpg")
+        
+        # reset metrics for next fold
+        metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[], "train_hd":[],"val_hd":[]}
+
+        # reset model weights per fold
+        del model, optimizer
+        torch.cuda.empty_cache()
+    
+    # view final results
+    print(np.mean(results["train_dice"]))
+    print(np.mean(results["val_dice"]))
+            
+
+        
+
 
     """
     # load pretrained vit model for weight extraction
@@ -411,67 +543,7 @@ if __name__ == "__main__":
     #for name,param in model.named_parameters():
     #   print(name,param)
 
-    #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
-    model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
-    print(DEVICE)
-
-    # change this when u change model
-    model.to(DEVICE)
-
-
-    
-    # Need to consider splitting the training set manually
-    train_directory = "ISLES/TRAINING"
-    val_directory = "ISLES/VALIDATION"
-
-    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
-    #modalities = ['OT', 'CT_4DPWI'] # remove ct image and try with only the other
-    
-    ### NEW STUFF ###
-    directory = "ISLES/TRAINING"
-    dataset = load_data(directory)
-
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=20) # 30 before
-
-    print( "Number of Patient Cases: ", len(dataset))
-    
-
-    #################
-
-    # load our train and validation sets
-    train_set = train_ISLES2018_loader(train_data, modalities)
-    print("Loaded Training Data")
-    val_set = val_ISLES2018_loader(val_data, modalities)
-    print("Loaded Validation Data")
-
-    print(len(train_set))
-    print(len(val_set))
-
-    # need to figure out how to import the data without issues with masks etc
-    train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
-    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
-
-
-    optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=100, gamma=0.1)
-
-    train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    
-    ax1.plot(metrics["train_loss"],label="training bce loss")
-    ax1.plot(metrics["val_loss"], label="validation bce loss")
-    ax1.set_title("Loss")
-    ax1.legend(loc="upper right")
-    
-    ax2.plot(metrics["train_dice"],label="training dice")
-    ax2.plot(metrics["val_dice"], label="validation dice")
-    ax2.set_title("Dice Score")
-    ax2.legend(loc="upper right")
-
-    plt.legend()
-    plt.show()
     
     
 

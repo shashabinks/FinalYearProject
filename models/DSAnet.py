@@ -108,6 +108,124 @@ class FPA(nn.Module):
 
         return out
 
+class ConvBnRelu(nn.Module):
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        kernel_size: int,
+        stride: int = 1,
+        padding: int = 0,
+        dilation: int = 1,
+        groups: int = 1,
+        bias: bool = True,
+        add_relu: bool = True,
+        interpolate: bool = False,
+    ):
+        super(ConvBnRelu, self).__init__()
+        self.conv = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=out_channels,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            bias=bias,
+            groups=groups,
+        )
+        self.add_relu = add_relu
+        self.interpolate = interpolate
+        self.bn = nn.BatchNorm2d(out_channels)
+        self.activation = nn.ReLU(inplace=True)
+
+    def forward(self, x):
+        x = self.conv(x)
+        x = self.bn(x)
+        if self.add_relu:
+            x = self.activation(x)
+        if self.interpolate:
+            x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
+        return x
+
+
+class FPABlock(nn.Module):
+    def __init__(self, in_channels, out_channels, upscale_mode="bilinear"):
+        super(FPABlock, self).__init__()
+
+        self.upscale_mode = upscale_mode
+        if self.upscale_mode == "bilinear":
+            self.align_corners = True
+        else:
+            self.align_corners = False
+
+        # global pooling branch
+        self.branch1 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            ConvBnRelu(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            ),
+        )
+
+        # midddle branch
+        self.mid = nn.Sequential(
+            ConvBnRelu(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            )
+        )
+        self.down1 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ConvBnRelu(
+                in_channels=in_channels,
+                out_channels=1,
+                kernel_size=7,
+                stride=1,
+                padding=3,
+            ),
+        )
+        self.down2 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2),
+        )
+        self.down3 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1),
+            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1),
+        )
+        self.conv2 = ConvBnRelu(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2)
+        self.conv1 = ConvBnRelu(in_channels=1, out_channels=1, kernel_size=7, stride=1, padding=3)
+
+    def forward(self, x):
+        h, w = x.size(2), x.size(3)
+        b1 = self.branch1(x)
+        upscale_parameters = dict(mode=self.upscale_mode, align_corners=self.align_corners)
+        b1 = F.interpolate(b1, size=(h, w), **upscale_parameters)
+
+        mid = self.mid(x)
+        x1 = self.down1(x)
+        x2 = self.down2(x1)
+        x3 = self.down3(x2)
+        x3 = F.interpolate(x3, size=(h // 4, w // 4), **upscale_parameters)
+
+        x2 = self.conv2(x2)
+        x = x2 + x3
+        x = F.interpolate(x, size=(h // 2, w // 2), **upscale_parameters)
+
+        x1 = self.conv1(x1)
+        x = x + x1
+        x = F.interpolate(x, size=(h, w), **upscale_parameters)
+
+        x = torch.mul(x, mid)
+        x = x + b1
+        return x
+
 def positional_encoding_2d(d_model, height, width, device):
     """
     reference: wzlxjtu/PositionalEncoding2D
@@ -233,6 +351,46 @@ class UpSample(nn.Module):
 
         return x
 
+class conv2d_block(nn.Module):
+    def __init__(self, in_ch, out_ch, kernel_size,activation=True):
+        super(conv2d_block, self).__init__()
+
+        if activation:
+          self.conv = nn.Sequential(
+              nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, stride=1, padding=1, bias=False),
+              nn.BatchNorm2d(out_ch),
+              nn.ReLU(inplace=True)
+          )
+        else:
+          self.conv = nn.Sequential(
+              nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, stride=1, bias=True),
+              nn.BatchNorm2d(out_ch)
+          )
+          
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+
+class ResPath(nn.Module):
+    def __init__(self, in_ch, out_ch, length):
+      super(ResPath,self).__init__()
+      self.len = length
+      self.conv3layers = nn.ModuleList([conv2d_block(in_ch,out_ch,3) for i in range(length)])
+      self.conv1layers = nn.ModuleList([conv2d_block(in_ch,out_ch,1,activation=False) for i in range(length)])
+      self.activation = nn.ReLU(inplace=True)
+      self.Batch = nn.ModuleList([nn.BatchNorm2d(out_ch) for i in range(length)])
+    
+    def forward(self,x):
+      out = x
+      for i in range(self.len):
+        shortcut = out
+        shortcut = self.conv1layers[i](shortcut)
+        out = self.conv3layers[i](out)
+        out = torch.add(shortcut,out)
+        out = self.activation(out)
+        out = self.Batch[i](out)
+      
+      return out
 
 def output1(n_classes):
     return nn.Sequential(
@@ -258,25 +416,88 @@ def output3(n_classes):
     )
 
 
+class MHCABlock(nn.Module):
+    def __init__(self, heads, channels, dropout = 0.0, pos_enc = True):
+        super().__init__()
+        self.pos_enc = pos_enc
+
+        self.mha = MultiHeadAttention(heads, channels, dropout)
+
+        #VERIFY
+        self.conv_S = nn.Sequential( 
+            nn.MaxPool2d(2),
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.conv_Y = nn.Sequential(
+            nn.Conv2d(channels * 2, channels, kernel_size=1, stride=1, bias=False), 
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.block_Z = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.Sigmoid(),
+            nn.ConvTranspose2d(channels, channels, kernel_size=2, stride=2),
+        )
+
+
+    def forward(self, Y, S):
+        Sb, Sc, Sh, Sw = S.size()
+        Yb, Yc, Yh, Yw = Y.size()
+
+
+        if self.pos_enc:
+            S = S + positional_encoding_2d(Sc, Sh, Sw, device=S.device)
+            Y = Y + positional_encoding_2d(Yc, Yh, Yw, device=Y.device)
+
+        V = self.conv_S(S).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+        KQ = self.conv_Y(Y).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+
+        Z = self.mha(KQ, KQ, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
+
+        del KQ, V, Yb, Sc, Yh, Yw
+
+        Z = self.block_Z(Z)
+
+        Z =  Z * S
+        del S
+
+        return Z
+
+
 
 class UNet_2D(nn.Module):
     
     
-    def __init__(self, fpa_block=False,sa=False,deep_supervision=False):
+    def __init__(self, in_channels=5,fpa_block=False,sa=False,deep_supervision=False, mhca=False, respath=False):
         super(UNet_2D, self).__init__()
 
         self.fpa_block = fpa_block
         self.sa = sa
         self.deep_supervision = deep_supervision
+        self.mhca = mhca
+        self.respath = respath
 
         self.pool = nn.MaxPool2d(kernel_size=2, stride=2)
 
         # define extra modules here
-        self.mhsa = MHSABlock(4 , 512)
-        self.fpa = FPA(256)
+        self.mhsa = MHSABlock(8 , 512)
+        
+        self.fpa = FPABlock(256,256)
+
+        self.mhcal4 = MHCABlock(1,256)
+        self.mhcal3 = MHCABlock(1,128)
+        self.mhcal2 = MHCABlock(1,64)
+
+        self.respath1 = ResPath(32,32,4)
+        self.respath2 = ResPath(64,64,3)
+        self.respath3 = ResPath(128,128,2)
+        self.respath4 = ResPath(256,256,1)
 
         # down path
-        self.doubleconv1= DoubleConv(5,32)
+        self.doubleconv1= DoubleConv(in_channels,32)
         self.doubleconv2= DoubleConv(32,64)
         self.doubleconv3= DoubleConv(64,128)
         self.doubleconv4= DoubleConv(128,256)
@@ -330,24 +551,38 @@ class UNet_2D(nn.Module):
         #BLOCK 4
         x = self.doubleconv4(x)
         skip_4 = x
-        x = self.pool(x)
+        
 
+        #BOTTLENECK
+        
 
         # enable feature pyramid attention module
         if self.fpa_block:
             x = self.fpa(x)
-        
-        #BOTTLENECK
-        x = self.doubleconv5(x)
+
         
         # enable multi head self attention module
         if self.sa:
+            x = self.pool(x)
+            x = self.doubleconv5(x)
             x = self.mhsa(x)
+            x = self.up1(x)
+        
+        else:
+            x = self.pool(x)
+            x = self.doubleconv5(x)
+            x = self.up1(x)
         
         #### DECODER ####
         
         #BLOCK 1
-        x = self.up1(x)
+
+        if self.respath:
+            skip_4 = self.respath4(skip_4)
+        
+        if self.mhca:
+            skip_4 = self.mhcal4(x,skip_4)
+        
         x = torch.cat((x, skip_4), dim=1) # skip layer
         x = self.doubleconv6(x)
 
@@ -355,23 +590,44 @@ class UNet_2D(nn.Module):
             x1 = self.output1(x)
         
         #BLOCK 2
+
+        if self.respath:
+            skip_3 = self.respath3(skip_3)
+
+        if self.mhca:
+            skip_3 = self.mhcal3(x,skip_3)
+
         x = self.up2(x)
         x = torch.cat((x, skip_3), dim=1) # skip layer
         x = self.doubleconv7(x)
 
-
         if self.training and self.deep_supervision:
             x2 = self.output2(x)
-        
+
+
         #BLOCK 3
+
+        if self.respath:
+            skip_2 = self.respath2(skip_2)
+
+        if self.mhca:
+            skip_2 = self.mhcal2(x,skip_2)
+        
+        
         x = self.up3(x)
         x = torch.cat((x, skip_2), dim=1) # skip layer
         x = self.doubleconv8(x)
 
         if self.training and self.deep_supervision:
             x3 = self.output3(x)
+
+        
         
         #BLOCK 4
+
+        if self.respath:
+            skip_1 = self.respath1(skip_1)
+
         x = self.up4(x)
         x = torch.cat((x, skip_1), dim=1) # skip layer
         x = self.doubleconv9(x)
