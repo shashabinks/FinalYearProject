@@ -3,7 +3,7 @@ from math import gamma
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-
+import timm
 from torch.autograd import Variable
 
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
@@ -50,7 +50,7 @@ from models.RPDnet import RPDNet
 LEARNING_RATE = 0.001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 50+1
+NUM_EPOCHS = 100+1
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -367,53 +367,41 @@ def multi_check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    """
+    
     # load pretrained vit model for weight extraction
     m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
+    m2 = timm.create_model('resnet50',pretrained='True')
 
     #for name,param in m1.named_parameters():
      #   print(name)
     
     # declare model
-    model = transUnet(p=0.2,attn_p=0.2)
+    model = transUnet()
 
     # create model weight dict
     transunet_model_dict = model.state_dict()
 
-    model.load_from(weights=np.load(imagenet21k_R50+ViT-B_16.npz))
+    #model.load_from(weights=np.load("imagenet21k_R50+ViT-B_16.npz"))
 
     # load the model weights only for the specific parts like ViT
     pretrained_dict = {k: v for k, v in m1.state_dict().items() if k in transunet_model_dict}
+    pretrained_dict_1 = {k: v for k, v in m2.state_dict().items() if k in transunet_model_dict}
 
     # update weight dict
     transunet_model_dict.update(pretrained_dict)
+    transunet_model_dict.update(pretrained_dict_1)
 
     # load weights
     model.load_state_dict(transunet_model_dict)
 
-    # need to freeze the ViT weights specifically
-    for params in model.blocks.children():
-        for param in params.parameters():
-            param.requires_grad = False
-    """
-
-    #model.blocks[3].attn.proj.weight.requires_grad = True
-
-    # view summary of model
-    #summary(model, input_size=(4,5,256,256))
-
-    #print(model.blocks[3].attn.proj.bias)
-
-    #print(model.vit.mlp_head.weight)
-    #print(model.vit.transformer.layers[0])
-
+    
     
     #for name,param in model.named_parameters():
     #   print(name,param)
 
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
-    model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
+    #model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
     print(DEVICE)
 
     # change this when u change model
@@ -454,7 +442,7 @@ if __name__ == "__main__":
 
 
     optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=100, gamma=0.1)
+    scheduler = StepLR(optimizer, step_size=60, gamma=0.01)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
 

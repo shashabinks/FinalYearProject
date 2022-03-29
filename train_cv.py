@@ -290,9 +290,10 @@ def multi_loss_function(preds, target, curr_metrics):
     pred_2 = calc_bce(preds[1],target)
     pred_3 = calc_bce(preds[2],target)
     pred_4 = calc_bce(preds[3],target)
+    pred_5 = calc_bce(preds[4],target)
 
     # sum up all the bce losses and divide by 4 to get average across the 4 layers
-    bce = (pred_1 + pred_2 + pred_3 + pred_4) 
+    bce = (pred_1 + pred_2 + pred_3 + pred_4 + pred_5) 
     
     pred = torch.sigmoid(preds[0])
     

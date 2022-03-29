@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision
 import torch.nn.functional as F
+import math
 
 class conv2d_block(nn.Module):
     def __init__(self, in_ch, out_ch, kernel_size,activation=True):
@@ -112,6 +113,130 @@ class ConvBnRelu(nn.Module):
             x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
         return x
 
+def positional_encoding_2d(d_model, height, width, device):
+    """
+    reference: wzlxjtu/PositionalEncoding2D
+    :param d_model: dimension of the model
+    :param height: height of the positions
+    :param width: width of the positions
+    :return: d_model*height*width position matrix
+    """
+    if d_model % 4 != 0:
+        raise ValueError("Cannot use sin/cos positional encoding with "
+                        "odd dimension (got dim={:d})".format(d_model))
+    pe = torch.zeros(d_model, height, width, device=device)
+
+    # Each dimension use half of d_model
+    d_model = int(d_model / 2)
+    div_term = torch.exp(torch.arange(0., d_model, 2, device=device) *
+                        -(math.log(10000.0) / d_model))
+    pos_w = torch.arange(0., width, device=device).unsqueeze(1)
+    pos_h = torch.arange(0., height, device=device).unsqueeze(1)
+    pe[0:d_model:2, :, :] = torch.sin(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[1:d_model:2, :, :] = torch.cos(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
+    pe[d_model::2, :, :] = torch.sin(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+    pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
+    return pe
+
+def attention(q, k, v, d_k, mask=None, dropout=None):   
+    scores = torch.matmul(q, k.transpose(-2, -1)) /  math.sqrt(d_k)
+    scores = F.softmax(scores, dim=-1)
+    
+    if dropout is not None:
+        scores = dropout(scores)
+        
+    output = torch.matmul(scores, v)
+    return output
+
+class MultiHeadAttention(nn.Module):
+    def __init__(self, heads, d_model, dropout = 0.0):
+        super().__init__()
+        
+        self.d_model = d_model
+        self.d_k = d_model // heads
+        self.h = heads
+        
+        self.q_linear = nn.Linear(d_model, d_model)
+        self.v_linear = nn.Linear(d_model, d_model)
+        self.k_linear = nn.Linear(d_model, d_model)
+        self.dropout = nn.Dropout(dropout)
+        self.out = nn.Linear(d_model, d_model)
+    
+    def forward(self, q, k, v, mask=None):
+        
+        bs = q.size(0)
+        
+        # perform linear operation and split into h heads
+        
+        k = self.k_linear(k).view(bs, -1, self.h, self.d_k)
+        q = self.q_linear(q).view(bs, -1, self.h, self.d_k)
+        v = self.v_linear(v).view(bs, -1, self.h, self.d_k)
+        
+        # transpose to get dimensions bs * h * sl * d_model       
+        k = k.transpose(1,2)
+        q = q.transpose(1,2)
+        v = v.transpose(1,2)
+
+        # calculate attention using function we will define next
+        scores = attention(q, k, v, self.d_k, mask, self.dropout)
+        
+        # concatenate heads and put through final linear layer
+        concat = scores.transpose(1,2).contiguous()\
+        .view(bs, -1, self.d_model)
+        
+        
+    
+        return self.out(concat)
+
+class MHCABlock(nn.Module):
+    def __init__(self, heads, channels, dropout = 0.0, pos_enc = True):
+        super().__init__()
+        self.pos_enc = pos_enc
+
+        self.mha = MultiHeadAttention(heads, channels, dropout)
+
+        #VERIFY
+        self.conv_S = nn.Sequential( 
+            nn.MaxPool2d(2),
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.conv_Y = nn.Sequential(
+            nn.Conv2d(channels * 2, channels, kernel_size=1, stride=1, bias=False), 
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.block_Z = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.Sigmoid(),
+            nn.ConvTranspose2d(channels, channels, kernel_size=2, stride=2),
+        )
+
+
+    def forward(self, Y, S):
+        Sb, Sc, Sh, Sw = S.size()
+        Yb, Yc, Yh, Yw = Y.size()
+
+
+        if self.pos_enc:
+            S = S + positional_encoding_2d(Sc, Sh, Sw, device=S.device)
+            Y = Y + positional_encoding_2d(Yc, Yh, Yw, device=Y.device)
+
+        V = self.conv_S(S).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+        KQ = self.conv_Y(Y).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+
+        Z = self.mha(KQ, KQ, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
+
+        del KQ, V, Yb, Sc, Yh, Yw
+
+        Z = self.block_Z(Z)
+
+        Z =  Z * S
+        del S
+
+        return Z
 
 class FPABlock(nn.Module):
     def __init__(self, in_channels, out_channels, upscale_mode="bilinear"):
@@ -207,18 +332,40 @@ def up_conv(in_channels, out_channels):
         in_channels, out_channels, kernel_size=2, stride=2
     )
 
+class MHSABlock(nn.Module):
+    def __init__(self, heads, d_model, dropout = 0.0, pos_enc = True):
+        super().__init__()
+        self.attention = MultiHeadAttention(heads, d_model, dropout)
+        self.pos_enc = pos_enc
+        
+    def forward(self, x):
+        b, c, h, w = x.size()
+
+        x2 = x        
+        if self.pos_enc:
+            pe = positional_encoding_2d(c, h, w, x.device)
+            x2 = x2 + pe
+
+        x2 = x2.reshape(b, c, h*w).permute(0, 2, 1)
+
+        att = self.attention(x2, x2, x2).permute(0, 2, 1).reshape(b, c, h, w)
+        
+        return att
+
 
 class RPDNet(nn.Module):
     """Shallow Unet with ResNet18 or ResNet34 encoder.
     """
 
-    def __init__(self, *, pretrained=False, out_channels=1,freeze=False, fpa_block=False, respaths=False, deep_supervision=False):
+    def __init__(self, *, pretrained=False, out_channels=1,freeze=False, fpa_block=False, respaths=False, mhca_blocks = False, mhsa_blocks=False, deep_supervision=False):
         super().__init__()
         self.encoder = torchvision.models.resnet34(pretrained=pretrained)
 
         self.fpa_block = fpa_block
         self.deep_supervision = deep_supervision
         self.respath = respaths
+        self.mhca_blocks = mhca_blocks
+        self.mhsa_blocks = mhsa_blocks
 
         # define extra modules
 
@@ -229,6 +376,11 @@ class RPDNet(nn.Module):
 
         self.fpa = FPABlock(512,512)
 
+        self.mhca1 = MHCABlock(1,256)
+        self.mhca2 = MHCABlock(1,128)
+        self.mhca3 = MHCABlock(1,64)
+
+        self.mhsa = MHSABlock(1,512)
     
         self.encoder_layers = list(self.encoder.children())
         self.encoder.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
@@ -292,6 +444,9 @@ class RPDNet(nn.Module):
 
         if self.fpa_block:
             x = self.fpa(block5)
+
+        elif self.mhsa_blocks:
+            x = self.mhsa(block5)
         
         x = self.up_conv6(block5)
 
@@ -299,6 +454,9 @@ class RPDNet(nn.Module):
         # level 4
         if self.respath:
             block4 = self.respath4(block4)
+        
+        if self.mhca_blocks:
+            block4 = self.mhca1(x,block4)
 
 
         x = torch.cat([x, block4], dim=1)
@@ -360,7 +518,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = RPDNet(fpa_block=True,respaths=True)
+    net = RPDNet(fpa_block=False,respaths=True, mhca_blocks=True,mhsa_blocks=True)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size,5, 256, 256)    # Batchsize, modal, hight,
