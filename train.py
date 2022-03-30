@@ -9,7 +9,7 @@ from torch.autograd import Variable
 
 from torchsummary import summary
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
-from patient_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
+from patient_dataloader_aug import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 #from patient_dataloader_mri import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import matplotlib.pyplot as plt
 import torch
@@ -49,10 +49,10 @@ from models.RPDnet import RPDNet
 
 
 # hyperparameters
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 200+1
+NUM_EPOCHS = 50+1
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  

@@ -50,6 +50,8 @@ def output1(n_classes):
         nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
         nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
         nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
+        nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2),
+        
         nn.Conv2d(32, n_classes, kernel_size=1)
     )
 
@@ -58,6 +60,7 @@ def output2(n_classes):
     return nn.Sequential(
         nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
         nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
+        nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2),
         nn.Conv2d(32, n_classes, kernel_size=1)
     )
 
@@ -65,6 +68,7 @@ def output2(n_classes):
 def output3(n_classes):
     return nn.Sequential(
         nn.ConvTranspose2d(64, 32, kernel_size=2, stride=2),
+        nn.ConvTranspose2d(32, 32, kernel_size=2, stride=2),
         nn.Conv2d(32, n_classes, kernel_size=1)
     )
 
@@ -362,7 +366,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = RPDNet(fpa_block=True,respaths=True)
+    net = RPDNet(fpa_block=True,respaths=True,deep_supervision=True)
     
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size,5, 256, 256)    # Batchsize, modal, hight,
@@ -373,4 +377,5 @@ if __name__ == "__main__":
         CT = CT.cuda()
 
     segmentation_prediction = net(CT)
-    print("Output:",segmentation_prediction.shape)
+    for out in segmentation_prediction:
+        print("Output:",out.shape)

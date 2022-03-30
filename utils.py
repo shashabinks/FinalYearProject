@@ -103,6 +103,8 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
         x = x.to(device=device)
         with torch.no_grad():
             preds = torch.sigmoid(model(x))
+            preds = (preds > 4.8e-4).float()
+            
             
             
         
@@ -110,9 +112,13 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
             f, (ax2, ax3) = plt.subplots(1, 2, figsize=(10,20))
 
             img = preds[0].cpu().squeeze().numpy()
+
+            #img = (img * 255.0).astype(np.int8)
+
+            #print(y[0].squeeze())
             
             ax2.imshow(img, cmap = 'gray',label="Prediction")
-            ax3.imshow(y[0].squeeze(0), cmap= 'gray', label="Mask")
+            ax3.imshow(y[0].squeeze(), cmap= 'gray', label="Mask")
             #plt.legend()
             plt.show()
 
