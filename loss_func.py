@@ -1,224 +1,53 @@
+import numpy as np
 import torch
 import torch.nn as nn
 
-
-# Helper function to enable loss function to be flexibly used for 
-# both 2D or 3D image segmentation - source: https://github.com/frankkramer-lab/MIScnn
-
-def identify_axis(shape):
-    # Three dimensional
-    if len(shape) == 5 : return [1,2,3]
-
-    # Two dimensional
-    elif len(shape) == 4 : return [1,2]
-    
-    # Exception - Unknown
-    else : raise ValueError('Metric: Shape of tensor is neither 2D or 3D.')
-
-
-class SymmetricFocalLoss(nn.Module):
+class BinaryMetrics():
+    r"""Calculate common metrics in binary cases.
+    In binary cases it should be noted that y_pred shape shall be like (N, 1, H, W), or an assertion 
+    error will be raised.
+    Also this calculator provides the function to calculate specificity, also known as true negative 
+    rate, as specificity/TPR is meaningless in multiclass cases.
     """
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        Focal Tversky loss' focal parameter controls degree of down-weighting of easy examples, by default 2.0
-    epsilon : float, optional
-        clip values to prevent division by zero error
-    """
-    def __init__(self, delta=0.7, gamma=2., epsilon=1e-07):
-        super(SymmetricFocalLoss, self).__init__()
-        self.delta = delta
-        self.gamma = gamma
-        self.epsilon = epsilon
+    def __init__(self, eps=1e-5, activation='0-1'):
+        self.eps = eps
+        self.activation = activation
 
-    def forward(self, y_pred, y_true):
+    def _calculate_overlap_metrics(self, gt, pred):
+        output = pred.view(-1, )
+        target = gt.view(-1, ).float()
 
-        axis = identify_axis(y_true.size())  
-        y_pred = torch.clamp(y_pred, self.epsilon, 1. - self.epsilon)
-        cross_entropy = -y_true * torch.log(y_pred)
+        tp = torch.sum(output * target)  # TP
+        fp = torch.sum(output * (1 - target))  # FP
+        fn = torch.sum((1 - output) * target)  # FN
+        tn = torch.sum((1 - output) * (1 - target))  # TN
 
-        # Calculate losses separately for each class
-        back_ce = torch.pow(1 - y_pred[:,:,:,0], self.gamma) * cross_entropy[:,:,:,0]
-        back_ce =  (1 - self.delta) * back_ce
+        pixel_acc = (tp + tn + self.eps) / (tp + tn + fp + fn + self.eps)
+        dice = (2 * tp + self.eps) / (2 * tp + fp + fn + self.eps)
+        precision = (tp + self.eps) / (tp + fp + self.eps)
+        recall = (tp + self.eps) / (tp + fn + self.eps)
+        specificity = (tn + self.eps) / (tn + fp + self.eps)
 
-        fore_ce = torch.pow(1 - y_pred[:,:,:,1], self.gamma) * cross_entropy[:,:,:,1]
-        fore_ce = self.delta * fore_ce
+        return pixel_acc, dice, precision, specificity, recall
 
-        loss = torch.mean(torch.sum(torch.stack([back_ce, fore_ce], axis=-1), axis=-1))
+    def __call__(self, y_true, y_pred):
+        # y_true: (N, H, W)
+        # y_pred: (N, 1, H, W)
+        if self.activation in [None, 'none']:
+            activation_fn = lambda x: x
+            activated_pred = activation_fn(y_pred)
+        elif self.activation == "sigmoid":
+            activation_fn = nn.Sigmoid()
+            activated_pred = activation_fn(y_pred)
+        elif self.activation == "0-1":
+            sigmoid_pred = nn.Sigmoid()(y_pred)
+            activated_pred = (sigmoid_pred > 0.5).float().to(y_pred.device)
+        else:
+            raise NotImplementedError("Not a supported activation!")
 
-        return loss
-
-
-class AsymmetricFocalLoss(nn.Module):
-    """For Imbalanced datasets
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.25
-    gamma : float, optional
-        Focal Tversky loss' focal parameter controls degree of down-weighting of easy examples, by default 2.0
-    epsilon : float, optional
-        clip values to prevent division by zero error
-    """
-    def __init__(self, delta=0.25, gamma=2., epsilon=1e-07):
-        super(AsymmetricFocalLoss, self).__init__()
-        self.delta = delta
-        self.gamma = gamma
-        self.epsilon = epsilon
-
-    def forward(self, y_pred, y_true):
-
-        axis = identify_axis(y_true.size())  
-        y_pred = torch.clamp(y_pred, self.epsilon, 1. - self.epsilon)
-        cross_entropy = -y_true * torch.log(y_pred)
-        
-	# Calculate losses separately for each class, only suppressing background class
-        back_ce = torch.pow(1 - y_pred[:,:,:,0], self.gamma) * cross_entropy[:,:,:,0]
-        back_ce =  (1 - self.delta) * back_ce
-
-        fore_ce = cross_entropy[:,:,:,1]
-        fore_ce = self.delta * fore_ce
-
-        loss = torch.mean(torch.sum(torch.stack([back_ce, fore_ce], axis=-1), axis=-1))
-
-        return loss
-
-
-class SymmetricFocalTverskyLoss(nn.Module):
-    """This is the implementation for binary segmentation.
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        focal parameter controls degree of down-weighting of easy examples, by default 0.75
-    smooth : float, optional
-        smooithing constant to prevent division by 0 errors, by default 0.000001
-    epsilon : float, optional
-        clip values to prevent division by zero error
-    """
-    def __init__(self, delta=0.7, gamma=0.75, epsilon=1e-07):
-        super(SymmetricFocalTverskyLoss, self).__init__()
-        self.delta = delta
-        self.gamma = gamma
-        self.epsilon = epsilon
-
-    def forward(self, y_pred, y_true):
-        y_pred = torch.clamp(y_pred, self.epsilon, 1. - self.epsilon)
-        axis = identify_axis(y_true.size())
-        
-        # Calculate true positives (tp), false negatives (fn) and false positives (fp)     
-        tp = torch.sum(y_true * y_pred, axis=axis)
-        fn = torch.sum(y_true * (1-y_pred), axis=axis)
-        fp = torch.sum((1-y_true) * y_pred, axis=axis)
-        dice_class = (tp + self.epsilon)/(tp + self.delta*fn + (1-self.delta)*fp + self.epsilon)
-
-        # Calculate losses separately for each class, enhancing both classes
-        back_dice = (1-dice_class[:,0]) * torch.pow(1-dice_class[:,0], -self.gamma)
-        fore_dice = (1-dice_class[:,1]) * torch.pow(1-dice_class[:,1], -self.gamma) 
-
-        # Average class scores
-        loss = torch.mean(torch.stack([back_dice,fore_dice], axis=-1))
-        return loss
-
-
-class AsymmetricFocalTverskyLoss(nn.Module):
-    """This is the implementation for binary segmentation.
-    Parameters
-    ----------
-    delta : float, optional
-        controls weight given to false positive and false negatives, by default 0.7
-    gamma : float, optional
-        focal parameter controls degree of down-weighting of easy examples, by default 0.75
-    smooth : float, optional
-        smooithing constant to prevent division by 0 errors, by default 0.000001
-    epsilon : float, optional
-        clip values to prevent division by zero error
-    """
-    def __init__(self, delta=0.7, gamma=0.75, epsilon=1e-07):
-        super(AsymmetricFocalTverskyLoss, self).__init__()
-        self.delta = delta
-        self.gamma = gamma
-        self.epsilon = epsilon
-
-    def forward(self, y_pred, y_true):
-        # Clip values to prevent division by zero error
-        y_pred = torch.clamp(y_pred, self.epsilon, 1. - self.epsilon)
-        axis = identify_axis(y_true.size())
-
-        # Calculate true positives (tp), false negatives (fn) and false positives (fp)     
-        tp = torch.sum(y_true * y_pred, axis=axis)
-        fn = torch.sum(y_true * (1-y_pred), axis=axis)
-        fp = torch.sum((1-y_true) * y_pred, axis=axis)
-        dice_class = (tp + self.epsilon)/(tp + self.delta*fn + (1-self.delta)*fp + self.epsilon)
-
-        # Calculate losses separately for each class, only enhancing foreground class
-        back_dice = (1-dice_class[:,0]) 
-        fore_dice = (1-dice_class[:,1]) * torch.pow(1-dice_class[:,1], -self.gamma) 
-
-        # Average class scores
-        loss = torch.mean(torch.stack([back_dice,fore_dice], axis=-1))
-        return loss
-
-
-class SymmetricUnifiedFocalLoss(nn.Module):
-    """The Unified Focal loss is a new compound loss function that unifies Dice-based and cross entropy-based loss functions into a single framework.
-    Parameters
-    ----------
-    weight : float, optional
-        represents lambda parameter and controls weight given to symmetric Focal Tversky loss and symmetric Focal loss, by default 0.5
-    delta : float, optional
-        controls weight given to each class, by default 0.6
-    gamma : float, optional
-        focal parameter controls the degree of background suppression and foreground enhancement, by default 0.5
-    epsilon : float, optional
-        clip values to prevent division by zero error
-    """
-    def __init__(self, weight=0.5, delta=0.6, gamma=0.5):
-        super(SymmetricUnifiedFocalLoss, self).__init__()
-        self.weight = weight
-        self.delta = delta
-        self.gamma = gamma
-
-    def forward(self, y_pred, y_true):
-      symmetric_ftl = SymmetricUnifiedFocalLoss(delta=self.delta, gamma=self.gamma)(y_pred, y_true)
-      symmetric_fl = SymmetricFocalLoss(delta=self.delta, gamma=self.gamma)(y_pred, y_true)
-      if self.weight is not None:
-        return (self.weight * symmetric_ftl) + ((1-self.weight) * symmetric_fl)  
-      else:
-        return symmetric_ftl + symmetric_fl
-
-
-class AsymmetricUnifiedFocalLoss(nn.Module):
-    """The Unified Focal loss is a new compound loss function that unifies Dice-based and cross entropy-based loss functions into a single framework.
-    Parameters
-    ----------
-    weight : float, optional
-        represents lambda parameter and controls weight given to asymmetric Focal Tversky loss and asymmetric Focal loss, by default 0.5
-    delta : float, optional
-        controls weight given to each class, by default 0.6
-    gamma : float, optional
-        focal parameter controls the degree of background suppression and foreground enhancement, by default 0.5
-    epsilon : float, optional
-        clip values to prevent division by zero error
-    """
-    def __init__(self, weight=0.5, delta=0.6, gamma=0.2):
-        super(AsymmetricUnifiedFocalLoss, self).__init__()
-        self.weight = weight
-        self.delta = delta
-        self.gamma = gamma
-
-    def forward(self, y_pred, y_true):
-      # Obtain Asymmetric Focal Tversky loss
-      asymmetric_ftl = AsymmetricFocalTverskyLoss(delta=self.delta, gamma=self.gamma)(y_pred, y_true)
-
-      # Obtain Asymmetric Focal loss
-      asymmetric_fl = AsymmetricFocalLoss(delta=self.delta, gamma=self.gamma)(y_pred, y_true)
-
-      # Return weighted sum of Asymmetrical Focal loss and Asymmetric Focal Tversky loss
-      if self.weight is not None:
-        return (self.weight * asymmetric_ftl) + ((1-self.weight) * asymmetric_fl)  
-      else:
-        return asymmetric_ftl + asymmetric_fl
+        assert activated_pred.shape[1] == 1, 'Predictions must contain only one channel' \
+                                             ' when performing binary segmentation'
+        pixel_acc, dice, precision, specificity, recall = self._calculate_overlap_metrics(y_true.to(y_pred.device,
+                                                                                                    dtype=torch.float),
+                                                                                          activated_pred)
+        return [pixel_acc, dice, precision, specificity, recall]

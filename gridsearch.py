@@ -3,49 +3,30 @@ from math import gamma
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
-import timm
+import numpy as np
 from torch.autograd import Variable
 
 
-from torchsummary import summary
-#from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
 from patient_dataloader import train_ISLES2018_loader,val_ISLES2018_loader, load_data
-#from patient_dataloader_mri import train_ISLES2018_loader,val_ISLES2018_loader, load_data
+
+
 import matplotlib.pyplot as plt
 import torch
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 import torch.nn as nn
-from torchvision.utils import make_grid
+
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
-from utils import save_predictions_as_imgs
+
 from torch.optim.lr_scheduler import StepLR
 import os
-import numpy as np
-from scipy.spatial.distance import directed_hausdorff
 
-from monai import metrics as mt
-from hausdorffDistance import HausdorffDistance
+
 
 # MODELS
-from models.DSAnet import UNet_2D
-from models.a_unet_model import UNet_Attention
-from models.mult_res_unet import MultiResNet
-from models.trans_unet import transUnet
-from models.sa_unet import SAUNet_2D
-from models.resUnet import SResUnet
 from models.RPDnet import RPDNet
-# Training Hyperparameters for replication of work:
-# U-Net
-# Attention U-Net
-# MultiResNet
-# TransUNet
-# DSU-Net
-# U-Net (with/without DS) with FPA
-# U-Net (with/without DS) with MHSA
-# U-Net (with/without DS) with ResNet-34 Backbone pre-trained / transfer learning
-# U-Net (with/without DS) with ResNet-34 Backbone not pre-trained / no transfer learning
-#
+
+h_params = {"lr":[0.00001,0.0001, 0.001, 0.01], "batch_size":[2,4], "epochs":[100]}
 
 
 # hyperparameters
@@ -62,7 +43,19 @@ TRANSFORMER = False
 DEEP_SUPERVISION = False
 
 
-metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"train_focal":[],"val_dice":[],"train_loss":[],"val_loss":[],"val_focal":[]}
+metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[], 
+            "train_precision":[],"val_precision":[], "train_recall":[], "val_recall":[], "train_hd":[], "val_hd":[]}
+
+
+def reset_weights(m):
+  '''
+    Try resetting model weights to avoid
+    weight leakage.
+  '''
+  for layer in m.children():
+    if hasattr(layer, 'reset_parameters'):
+        #print(f'Reset trainable parameters of layer = {layer}')
+        layer.reset_parameters()
       
 # define training function
 def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
@@ -110,18 +103,22 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         train_loss = curr_metrics['loss'] / epoch_samples
         train_acc = curr_metrics["dice_coeff"] / epoch_samples
         train_bce = curr_metrics['bce'] / epoch_samples
-        train_focal = curr_metrics['focal_loss'] / epoch_samples
+        
+       
 
         metrics["train_loss"].append(train_loss)
         metrics["train_dice"].append(train_acc)
         metrics["train_bce"].append(train_bce)
-        metrics["train_focal"].append(train_focal)
+        
+        
         
         print(f"Epoch: {epoch}")
-        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce} Train Focal: {train_focal}")
+        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce}")
         
         epoch_val_acc = 0.0
 
+
+        # check validation
         if DEEP_SUPERVISION:
             epoch_val_acc = multi_check_accuracy(loaders[1], model, device=DEVICE)
 
@@ -137,19 +134,16 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         
         # view images after all epochs
         if epoch % (NUM_EPOCHS-1) == 0:
-            if DEEP_SUPERVISION:
-                view_images_multi(loaders[1], model, device=DEVICE)
-
-            else:
-                save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
-
             if epoch == NUM_EPOCHS - 1:
                 print("Final Epoch!, Saving model...")
 
                 torch.save(model.state_dict(), os.path.join("Weights/", "final_weights.pth"))
         
+        # check for decay
         if scheduler:
             scheduler.step()
+    
+    del loss
 
 
 def view_images_multi(loader, model, device="cuda"):
@@ -200,12 +194,7 @@ def calc_bce(pred=None, target=None):
 
 
 def focal_loss(pred, targets,alpha,gamma):
-    #inputs = torch.sigmoid(inputs)       
-        
-    #flatten label and prediction tensors
-    #inputs = inputs.view(-1)
-    #targets = targets.view(-1)
-
+    
     bceweight = torch.ones_like(targets)  +  20 * targets # create a weight for the bce that correlates to the size of the lesion
     
     
@@ -216,24 +205,6 @@ def focal_loss(pred, targets,alpha,gamma):
                        
     return focal_loss
     
-def compute_hausdorff(y_pred, y_true):
-    '''
-    get directed hausdorff
-    '''
-
-    shape = y_pred.shape
-    y_true = torch.squeeze(y_true).data.cpu().numpy()
-    y_pred = torch.squeeze(y_pred).data.cpu().numpy()
-
-    y_pred = np.reshape(y_pred, (shape[0],shape[1]))
-
-
-    
-    hd1 = directed_hausdorff(y_pred, y_true)[0]
-    hd2 = directed_hausdorff(y_pred, y_true)[0]
-
-    return max(hd1, hd2)
-
 
 
 # separate this bit and move the dc loss function into the train.py file...
@@ -247,13 +218,6 @@ def calc_loss(pred, target, curr_metrics):
     pred = torch.sigmoid(pred)
 
     
-
-    #hd = compute_hausdorff(pred,target)
-
-    
-
-    actual_loss = focal_loss(pred,target,20,1)
-    
     dice,dice_coeff = dc_loss(pred, target)
 
     # combo loss
@@ -262,7 +226,8 @@ def calc_loss(pred, target, curr_metrics):
     curr_metrics['bce'] += bce.data.cpu().numpy() * target.size(0)
     curr_metrics['dice_coeff'] += dice_coeff.data.cpu().numpy() * target.size(0)
     curr_metrics['loss'] += loss.data.cpu().numpy() * target.size(0)
-    #curr_metrics['focal_loss'] += hd.data.cpu().numpy() * target.size(0)
+   
+    
     
     return bce
 
@@ -275,9 +240,10 @@ def multi_loss_function(preds, target, curr_metrics):
     pred_2 = calc_bce(preds[1],target)
     pred_3 = calc_bce(preds[2],target)
     pred_4 = calc_bce(preds[3],target)
+    pred_5 = calc_bce(preds[4],target)
 
     # sum up all the bce losses and divide by 4 to get average across the 4 layers
-    bce = (pred_1 + pred_2 + pred_3 + pred_4) 
+    bce = (pred_1 + pred_2 + pred_3 + pred_4 + pred_5) 
     
     pred = torch.sigmoid(preds[0])
     
@@ -317,14 +283,15 @@ def check_accuracy(loader, model, device="cuda"):
     val_dsc = curr_metrics['dice_coeff'] / epoch_samples
     val_bce = curr_metrics["bce"] / epoch_samples
     val_loss = curr_metrics['loss'] / epoch_samples
-    val_focal = curr_metrics['focal_loss'] / epoch_samples
+    
 
     metrics["val_loss"].append(val_loss)
     metrics["val_dice"].append(val_dsc)
     metrics["val_bce"].append(val_bce)
-    metrics["val_focal"].append(val_focal)
     
-    print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce} Validation Focal: {val_focal}")
+    
+    
+    print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce}")
     
     model.train()
 
@@ -357,6 +324,7 @@ def multi_check_accuracy(loader, model, device="cuda"):
     metrics["val_loss"].append(val_loss)
     metrics["val_dice"].append(val_dsc)
     metrics["val_bce"].append(val_bce)
+
     
     print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce}")
     
@@ -369,103 +337,77 @@ def multi_check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    """
-    # load pretrained vit model for weight extraction
-    m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
-    m2 = timm.create_model('resnet50',pretrained='True')
+    results = {}
 
-    #for name,param in m1.named_parameters():
-     #   print(name)
+    for lr in h_params["lr"]:
+        for batch_size in h_params["batch_size"]:
+            for epochs in h_params["epochs"]:
+
+                print(f"current settings: {lr}_{epochs}_{batch_size} ")
+
+                model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
+                print(DEVICE)
+
+                # change this when u change model
+                model.to(DEVICE)
+
+
+                
+                # Need to consider splitting the training set manually
+                train_directory = "ISLES/TRAINING"
+                val_directory = "ISLES/VALIDATION"
+
+                modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
+                
+                
+                ### NEW STUFF ###
+                directory = "ISLES/TRAINING"
+                dataset = load_data(directory)
+
+                train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=20) # 30 before
+
+                print( "Number of Patient Cases: ", len(dataset))
+            
+
+                # load our train and validation sets
+                train_set = train_ISLES2018_loader(train_data, modalities)
+                val_set = val_ISLES2018_loader(val_data, modalities)
+                                
+
+                # need to figure out how to import the data without issues with masks etc
+                train_dl = DataLoader(train_set, batch_size=batch_size, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
+                valid_dl = DataLoader(val_set, batch_size=batch_size, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
+
+
+                optimizer = optim.Adam(model.parameters(), lr)
+            
+
+                train_model(model, (train_dl, valid_dl),optimizer,epochs)
+
+
+                results.update({f"{lr}_{epochs}_{batch_size}" : np.mean(metrics["val_dice"])})
+                # reset metrics for next fold
+                metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[], "train_hd":[],"val_hd":[]}
+
+
+
+                # reset model weights experiment
+                del model, optimizer
+                torch.cuda.empty_cache()
     
-    # declare model
-    model = UNet_2D()
+    print(results)
 
-    #summary(model, input_data=(5,256,256))
 
-    # create model weight dict
-    transunet_model_dict = model.state_dict()
 
-    #model.load_from(weights=np.load("imagenet21k_R50+ViT-B_16.npz"))
+          
+            
 
-    # load the model weights only for the specific parts like ViT
-    pretrained_dict = {k: v for k, v in m1.state_dict().items() if k in transunet_model_dict}
-    pretrained_dict_1 = {k: v for k, v in m2.state_dict().items() if k in transunet_model_dict}
+        
 
-    # update weight dict
-    transunet_model_dict.update(pretrained_dict)
-    transunet_model_dict.update(pretrained_dict_1)
 
-    # load weights
-    model.load_state_dict(transunet_model_dict)
-
-    
-    
-    #for name,param in model.named_parameters():
-    #   print(name,param)
-    """
-    #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
-    
-    
-    model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
-    
-    print(DEVICE)
-
-    # change this when u change model
-    model.to(DEVICE)
 
 
     
-    # Need to consider splitting the training set manually
-    train_directory = "ISLES/TRAINING"
-    val_directory = "ISLES/VALIDATION"
-
-    modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
-    #modalities = ['OT', 'CT_4DPWI'] # remove ct image and try with only the other
-    
-    ### NEW STUFF ###
-    directory = "ISLES/TRAINING"
-    dataset = load_data(directory)
-
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=20) # 30 before
-
-    print( "Number of Patient Cases: ", len(dataset))
-    
-
-    #################
-
-    # load our train and validation sets
-    train_set = train_ISLES2018_loader(train_data, modalities)
-    print("Loaded Training Data")
-    val_set = val_ISLES2018_loader(val_data, modalities)
-    print("Loaded Validation Data")
-
-    print(len(train_set))
-    print(len(val_set))
-
-    # need to figure out how to import the data without issues with masks etc
-    train_dl = DataLoader(train_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=True, pin_memory=True)
-    valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
-
-
-    optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=200, gamma=0.01)
-
-    train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
-
-    fig, (ax1, ax2) = plt.subplots(1, 2)
-    
-    ax1.plot(metrics["train_loss"],label="training bce loss")
-    ax1.plot(metrics["val_loss"], label="validation bce loss")
-    ax1.set_title("Loss")
-    ax1.legend(loc="upper right")
-    
-    ax2.plot(metrics["train_dice"],label="training dice")
-    ax2.plot(metrics["val_dice"], label="validation dice")
-    ax2.set_title("Dice Score")
-    ax2.legend(loc="upper right")
-
-    plt.legend()
-    plt.show()
     
     
 
