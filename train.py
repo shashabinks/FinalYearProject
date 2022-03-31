@@ -49,10 +49,10 @@ from models.RPDnet import RPDNet
 
 
 # hyperparameters
-LEARNING_RATE = 0.001
+LEARNING_RATE = 0.01
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 50+1
+NUM_EPOCHS = 200+1
 NUM_WORKERS = 2
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -369,7 +369,7 @@ def multi_check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    """
+    #"""
     # load pretrained vit model for weight extraction
     m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
     m2 = timm.create_model('resnet50',pretrained='True')
@@ -378,7 +378,7 @@ if __name__ == "__main__":
      #   print(name)
     
     # declare model
-    model = UNet_2D()
+    model = transUnet()
 
     #summary(model, input_data=(5,256,256))
 
@@ -402,11 +402,13 @@ if __name__ == "__main__":
     
     #for name,param in model.named_parameters():
     #   print(name,param)
-    """
+    #"""
+
+
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
     
-    model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
+    #model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
     
     print(DEVICE)
 
@@ -447,7 +449,7 @@ if __name__ == "__main__":
     valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
 
 
-    optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
+    optimizer = optim.SGD(model.parameters(), LEARNING_RATE)
     scheduler = StepLR(optimizer, step_size=200, gamma=0.01)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
