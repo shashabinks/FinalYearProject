@@ -287,8 +287,8 @@ class DecoderBlock(nn.Module):
             in_channels,
             out_channels,
             skip_channels=0,
-            use_batchnorm=True,
-    ):
+            use_batchnorm=True,):
+
         super().__init__()
         self.conv1 = Conv2dReLU(
             in_channels + skip_channels,
@@ -306,9 +306,15 @@ class DecoderBlock(nn.Module):
         )
         self.up = nn.UpsamplingBilinear2d(scale_factor=2)
 
-    def forward(self, x, skip=None):
+        self.attention_gate_blocks = nn.ModuleList([Attention_block(512,512,256), Attention_block(256,256,128), Attention_block(64,128,64)])
+
+    def forward(self, x, i,skip=None):
         x = self.up(x)
+        # add attention gates here
+
         if skip is not None:
+
+            skip = self.attention_gate_blocks[i](x,skip)
             x = torch.cat([x, skip], dim=1)
         x = self.conv1(x)
         x = self.conv2(x)
@@ -352,21 +358,125 @@ class DecoderCup(nn.Module):
         ]
         self.blocks = nn.ModuleList(blocks)
 
+        self.cbam_layers = nn.ModuleList([CBAM(512),CBAM(256),CBAM(64)])
+
+        
+
     def forward(self, hidden_states, features=None):
         B, n_patch, hidden = hidden_states.size()  # reshape from (B, n_patch, hidden) to (B, h, w, hidden)
         h, w = int(np.sqrt(n_patch)), int(np.sqrt(n_patch))
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
         x = self.conv_more(x)
+
+       
         for i, decoder_block in enumerate(self.blocks):
             if features is not None:
                 skip = features[i] if (i < self.config.n_skip) else None
             else:
                 skip = None
 
+            if skip is not None:
+                #print(x.shape, skip.shape)
+
+                # apply cbam to skip connections
+                cbam = self.cbam_layers[i]
+                skip = cbam(skip)
+
+
             # add cbam and attention here?
-            x = decoder_block(x, skip=skip)
+            x = decoder_block(x,i, skip=skip)
         return x
+
+class Flatten(nn.Module):
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+class ChannelAttention(nn.Module):
+    def __init__(self, in_planes, ratio=16):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.shared_MLP = nn.Sequential(
+            nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False),
+            nn.ReLU(),
+            nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
+        )
+        # self.fc1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False)
+        # self.relu1 = nn.ReLU()
+        # self.fc2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
+
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out =self.shared_MLP(self.avg_pool(x))# self.fc2(self.relu1(self.fc1(self.avg_pool(x))))
+        max_out =self.shared_MLP(self.max_pool(x))# self.fc2(self.relu1(self.fc1(self.max_pool(x))))
+        out = avg_out + max_out
+        return self.sigmoid(out)
+
+
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention, self).__init__()
+
+        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if kernel_size == 7 else 1
+
+        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, x):
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        x = self.conv1(x)
+        return self.sigmoid(x)
+
+
+class CBAM(nn.Module):
+    def __init__(self, planes):
+        super(CBAM, self).__init__()
+        self.ca = ChannelAttention(planes)
+        self.sa = SpatialAttention()
+
+    def forward(self, x):
+        x = self.ca(x) * x
+        x = self.sa(x) * x
+        return x
+
+    
+class Attention_block(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super(Attention_block, self).__init__()
+
+      
+
+        self.W_g = nn.Sequential(
+            nn.Conv2d(F_l, F_int, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+
+        self.W_x = nn.Sequential(
+            nn.Conv2d(F_g, F_int, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+
+        self.psi = nn.Sequential(
+            nn.Conv2d(F_int, 1, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
+        )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, g, x):
+       
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.relu(g1 + x1)
+        psi = self.psi(psi)
+        out = x * psi
+        return out
 
 
 class VisionTransformer(nn.Module):

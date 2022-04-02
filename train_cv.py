@@ -473,14 +473,18 @@ if __name__ == "__main__":
             
             fig, (ax1, ax2) = plt.subplots(1, 2)
         
-            ax1.plot(metrics["train_loss"],label="training bce loss")
-            ax1.plot(metrics["val_loss"], label="validation bce loss")
+            ax1.plot(metrics["train_loss"],label="training loss")
+            ax1.plot(metrics["val_loss"], label="validation loss")
+            ax1.set_ylabel("Loss")
+            ax1.set_xlabel("Epochs")
             ax1.set_title("Loss")
             ax1.legend(loc="upper right")
             
             ax2.plot(metrics["train_dice"],label="training dice")
             ax2.plot(metrics["val_dice"], label="validation dice")
             ax2.set_title("Dice Score")
+            ax2.set_ylabel("Dice Coefficient")
+            ax2.set_xlabel("Epochs")
             ax2.legend(loc="upper right")
 
             fig.savefig(f"fold_{fold}_ResNet34_trained.jpg")

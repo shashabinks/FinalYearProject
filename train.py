@@ -35,9 +35,11 @@ from models.trans_unet import transUnet
 from models.sa_unet import SAUNet_2D
 from models.resUnet import SResUnet
 #from models.RPDnet import RPDNet
-from models.transunet.vit_seg_modeling import VisionTransformer
-from models.transunet.vit_seg_modeling import CONFIGS
+from models.aa_transunet.vit_seg_modeling import VisionTransformer
+from models.aa_transunet.vit_seg_modeling import CONFIGS
 from models.final_net import RPDNet
+from models.aa_unet import AA_UNet
+
 
 from loss_func import BinaryMetrics
 # Training Hyperparameters for replication of work:
@@ -57,7 +59,7 @@ from loss_func import BinaryMetrics
 LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 120 + 1
+NUM_EPOCHS = 100 + 1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -209,7 +211,7 @@ def calc_bce(pred=None, target=None):
     return bce
 
 
-def focal_loss(inputs, targets, smooth=1, alpha=0.5, beta=0.5, gamma=1):
+def focal_loss(inputs, targets, smooth=1, alpha=0.7, beta=0.3, gamma=1):
     
 
     #comment out if your model contains a sigmoid or equivalent activation layer
@@ -252,30 +254,28 @@ def compute_hausdorff(preds, targets):
 def jaccard_coeff(inputs, targets):
     eps = 1.0
 
-    inputs = inputs.contiguous()
-    targets = targets.contiguous()
+    inputs = inputs.view(-1)
+    targets = targets.view(-1)
 
-    intersection = (inputs * targets).sum(dim=2).sum(dim=2)   
-    union = (inputs.sum(dim=2).sum(dim=2) + targets.sum(dim=2).sum(dim=2)) - intersection
+    intersection = (inputs * targets).sum()  
+    union = (inputs.sum() + targets.sum()) - intersection
 
     return (intersection / (union + eps)).mean()
 
-def precision_and_recall(input , target):
+def precision_and_recall(inputs , targets):
 
-    eps = 1e-5
+    inputs = inputs.view(-1)
+    targets = targets.view(-1)
 
-    input = input.view(-1)
-    target = target.view(-1).float()
+    correct = (inputs * targets).sum() 
 
-    tp = torch.sum(input * target)  # TP
-    fp = torch.sum(input * (1 - target))  # FP
-    fn = torch.sum((1 - input) * target)  # FN
-    tn = torch.sum((1 - input) * (1 - target))  # TN
+    predicted = inputs.sum()  
+    truth = targets.sum()
 
-    precision = (tp + eps) / (tp + fp + eps)
-    recall = (tp + eps) / (tp + fn + eps)
+    precision = correct/(predicted + 1.0)
+    recall = correct/(truth + 1.0)
 
-    return precision, recall
+    return precision.mean(), recall.mean()
 
 # separate this bit and move the dc loss function into the train.py file...
 # calculate weighted loss
@@ -287,6 +287,8 @@ def calc_loss(pred, target, curr_metrics):
 
     # sigmoid activation
     pred = torch.sigmoid(pred)
+
+    #focal = focal_loss(pred,target)
 
     precision, recall = precision_and_recall(pred,target)
 
@@ -455,10 +457,10 @@ if __name__ == "__main__":
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
     
-    model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
+    #model = AA_UNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
     
-    #config_vt = CONFIGS["R50-ViT-B_16"]
-    #model = VisionTransformer(config_vt, img_size=256,num_classes=1)
+    config_vt = CONFIGS["R50-ViT-B_16"]
+    model = VisionTransformer(config_vt, img_size=256,num_classes=1)
     #model.load_from(weights=np.load(config_vt.pretrained_path))
     print(DEVICE)
 
@@ -504,14 +506,21 @@ if __name__ == "__main__":
 
     fig, (ax1, ax2) = plt.subplots(1, 2)
     
-    ax1.plot(metrics["train_loss"],label="training bce loss")
-    ax1.plot(metrics["val_loss"], label="validation bce loss")
+        
+    fig, (ax1, ax2) = plt.subplots(1, 2)
+        
+    ax1.plot(metrics["train_loss"],label="training loss")
+    ax1.plot(metrics["val_loss"], label="validation loss")
+    ax1.set_ylabel("Loss")
+    ax1.set_xlabel("Epochs")
     ax1.set_title("Loss")
     ax1.legend(loc="upper right")
     
     ax2.plot(metrics["train_dice"],label="training dice")
     ax2.plot(metrics["val_dice"], label="validation dice")
     ax2.set_title("Dice Score")
+    ax2.set_ylabel("Dice Coefficient")
+    ax2.set_xlabel("Epochs")
     ax2.legend(loc="upper right")
 
     plt.legend()

@@ -215,108 +215,7 @@ class ConvBnRelu(nn.Module):
         if self.interpolate:
             x = F.interpolate(x, scale_factor=2, mode="bilinear", align_corners=True)
         return x
-
-def positional_encoding_2d(d_model, height, width, device):
-    """
-    reference: wzlxjtu/PositionalEncoding2D
-    :param d_model: dimension of the model
-    :param height: height of the positions
-    :param width: width of the positions
-    :return: d_model*height*width position matrix
-    """
-    if d_model % 4 != 0:
-        raise ValueError("Cannot use sin/cos positional encoding with "
-                        "odd dimension (got dim={:d})".format(d_model))
-    pe = torch.zeros(d_model, height, width, device=device)
-
-    # Each dimension use half of d_model
-    d_model = int(d_model / 2)
-    div_term = torch.exp(torch.arange(0., d_model, 2, device=device) *
-                        -(math.log(10000.0) / d_model))
-    pos_w = torch.arange(0., width, device=device).unsqueeze(1)
-    pos_h = torch.arange(0., height, device=device).unsqueeze(1)
-    pe[0:d_model:2, :, :] = torch.sin(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
-    pe[1:d_model:2, :, :] = torch.cos(pos_w * div_term).transpose(0, 1).unsqueeze(1).repeat(1, height, 1)
-    pe[d_model::2, :, :] = torch.sin(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
-    pe[d_model + 1::2, :, :] = torch.cos(pos_h * div_term).transpose(0, 1).unsqueeze(2).repeat(1, 1, width)
-    return pe
-
-def attention(q, k, v, d_k, mask=None, dropout=None):   
-    scores = torch.matmul(q, k.transpose(-2, -1)) /  math.sqrt(d_k)
-    scores = F.softmax(scores, dim=-1)
     
-    if dropout is not None:
-        scores = dropout(scores)
-        
-    output = torch.matmul(scores, v)
-    return output
-
-class MultiHeadAttention(nn.Module):
-    def __init__(self, heads, d_model, dropout = 0.0):
-        super().__init__()
-        
-        self.d_model = d_model
-        self.d_k = d_model // heads
-        self.h = heads
-        
-        self.q_linear = nn.Linear(d_model, d_model)
-        self.v_linear = nn.Linear(d_model, d_model)
-        self.k_linear = nn.Linear(d_model, d_model)
-        self.dropout = nn.Dropout(dropout)
-        self.out = nn.Linear(d_model, d_model)
-    
-    def forward(self, q, k, v, mask=None):
-        
-        bs = q.size(0)
-        
-        # perform linear operation and split into h heads
-        
-        k = self.k_linear(k).view(bs, -1, self.h, self.d_k)
-        q = self.q_linear(q).view(bs, -1, self.h, self.d_k)
-        v = self.v_linear(v).view(bs, -1, self.h, self.d_k)
-        
-        # transpose to get dimensions bs * h * sl * d_model       
-        k = k.transpose(1,2)
-        q = q.transpose(1,2)
-        v = v.transpose(1,2)
-
-        # calculate attention using function we will define next
-        scores = attention(q, k, v, self.d_k, mask, self.dropout)
-
-        del k,q,v
-        
-        # concatenate heads and put through final linear layer
-        concat = scores.transpose(1,2).contiguous()\
-        .view(bs, -1, self.d_model)
-        
-        
-    
-        return self.out(concat)
-    
-class MHSABlock(nn.Module):
-    def __init__(self, heads, d_model, dropout = 0.0, pos_enc = True):
-        super().__init__()
-        self.attention = MultiHeadAttention(heads, d_model, dropout)
-        self.pos_enc = pos_enc
-        
-    def forward(self, x):
-        b, c, h, w = x.size()
-
-        x2 = x     
-           
-        if self.pos_enc:
-            pe = positional_encoding_2d(c, h, w, x.device)
-            del x 
-            x2 = x2 + pe
-            del pe 
-
-        x2 = x2.reshape(b, c, h*w).permute(0, 2, 1)
-
-        att = self.attention(x2, x2, x2).permute(0, 2, 1).reshape(b, c, h, w)
-
-        del x2
-        
-        return att
 
 
 def double_conv(in_channels, out_channels):
@@ -355,147 +254,82 @@ class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
 
-class ChannelGate(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
-        super(ChannelGate, self).__init__()
-        self.gate_channels = gate_channels
-        self.mlp = nn.Sequential(
-            Flatten(),
-            nn.Linear(gate_channels, gate_channels // reduction_ratio),
+class ChannelAttention(nn.Module):
+    def __init__(self, in_planes, ratio=16):
+        super(ChannelAttention, self).__init__()
+        self.avg_pool = nn.AdaptiveAvgPool2d(1)
+        self.max_pool = nn.AdaptiveMaxPool2d(1)
+        self.shared_MLP = nn.Sequential(
+            nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False),
             nn.ReLU(),
-            nn.Linear(gate_channels // reduction_ratio, gate_channels)
-            )
-        self.pool_types = pool_types
+            nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
+        )
+        # self.fc1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=False)
+        # self.relu1 = nn.ReLU()
+        # self.fc2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=False)
+
+        self.sigmoid = nn.Sigmoid()
+
     def forward(self, x):
-        channel_att_sum = None
-        for pool_type in self.pool_types:
-            if pool_type=='avg':
-                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( avg_pool )
-            elif pool_type=='max':
-                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( max_pool )
-            elif pool_type=='lp':
-                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( lp_pool )
-            elif pool_type=='lse':
-                # LSE pool only
-                lse_pool = logsumexp_2d(x)
-                channel_att_raw = self.mlp( lse_pool )
+        avg_out =self.shared_MLP(self.avg_pool(x))# self.fc2(self.relu1(self.fc1(self.avg_pool(x))))
+        max_out =self.shared_MLP(self.max_pool(x))# self.fc2(self.relu1(self.fc1(self.max_pool(x))))
+        out = avg_out + max_out
+        return self.sigmoid(out)
 
-            if channel_att_sum is None:
-                channel_att_sum = channel_att_raw
-            else:
-                channel_att_sum = channel_att_sum + channel_att_raw
 
-        scale = torch.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
-        return x * scale
+class SpatialAttention(nn.Module):
+    def __init__(self, kernel_size=7):
+        super(SpatialAttention, self).__init__()
 
-def logsumexp_2d(tensor):
-    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
-    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
-    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
-    return outputs
+        assert kernel_size in (3, 7), 'kernel size must be 3 or 7'
+        padding = 3 if kernel_size == 7 else 1
 
-class ChannelPool(nn.Module):
+        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=padding, bias=False)
+        self.sigmoid = nn.Sigmoid()
+
     def forward(self, x):
-        return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
+        avg_out = torch.mean(x, dim=1, keepdim=True)
+        max_out, _ = torch.max(x, dim=1, keepdim=True)
+        x = torch.cat([avg_out, max_out], dim=1)
+        x = self.conv1(x)
+        return self.sigmoid(x)
 
-class SpatialGate(nn.Module):
-    def __init__(self):
-        super(SpatialGate, self).__init__()
-        kernel_size = 7
-        self.compress = ChannelPool()
-        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
-    def forward(self, x):
-        x_compress = self.compress(x)
-        x_out = self.spatial(x_compress)
-        scale = torch.sigmoid(x_out) # broadcasting
-        return x * scale
 
 class CBAM(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
+    def __init__(self, planes):
         super(CBAM, self).__init__()
-        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
-        self.no_spatial=no_spatial
-        if not no_spatial:
-            self.SpatialGate = SpatialGate()
+        self.ca = ChannelAttention(planes)
+        self.sa = SpatialAttention()
+
     def forward(self, x):
-        x_out = self.ChannelGate(x)
-        if not self.no_spatial:
-            x_out = self.SpatialGate(x_out)
-        return x_out
+        x = self.ca(x) * x
+        x = self.sa(x) * x
+        return x
 
-class MHCABlock(nn.Module):
-    def __init__(self, heads, channels, dropout = 0.0, pos_enc = True):
-        super().__init__()
-        self.pos_enc = pos_enc
-
-        self.mha = MultiHeadAttention(heads, channels, dropout)
-
-        #VERIFY
-        self.conv_S = nn.Sequential( 
-            nn.MaxPool2d(2),
-            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
-            nn.BatchNorm2d(channels),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True),
-        )
-        self.conv_Y = nn.Sequential(
-            nn.Conv2d(channels * 2, channels, kernel_size=1, stride=1, bias=False), 
-            nn.BatchNorm2d(channels),
-            nn.LeakyReLU(negative_slope=0.2, inplace=True),
-        )
-        self.block_Z = nn.Sequential(
-            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
-            nn.BatchNorm2d(channels),
-            nn.Sigmoid(),
-            nn.ConvTranspose2d(channels, channels, kernel_size=2, stride=2),
-        )
-
-
-    def forward(self, Y, S):
-        Sb, Sc, Sh, Sw = S.size()
-        Yb, Yc, Yh, Yw = Y.size()
-
-        
-        
-
-        if self.pos_enc:
-            S = S + positional_encoding_2d(Sc, Sh, Sw, device=S.device)
-            Y = Y + positional_encoding_2d(Yc, Yh, Yw, device=Y.device)
-
-
-
-        V = self.conv_S(S).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
-        KQ = self.conv_Y(Y).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
-
-        Z = self.mha(KQ, KQ, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
-
-        del KQ, V, Yb, Sc, Yh, Yw
-
-        Z = self.block_Z(Z)
-
-        Z =  Z * S
-        del S
-
-        return Z
     
 class Attention_block(nn.Module):
     def __init__(self, F_g, F_l, F_int):
         super(Attention_block, self).__init__()
 
+        self.up = nn.Sequential(
+            nn.Upsample(scale_factor=2),
+            nn.Conv2d(F_l, F_l, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(F_l),
+            nn.ReLU(inplace=True)
+        )
+
         self.W_g = nn.Sequential(
-            nn.Conv2d(F_l, F_int, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.Conv2d(F_l, F_int, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(F_int)
         )
 
         self.W_x = nn.Sequential(
-            nn.Conv2d(F_g, F_int, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.Conv2d(F_g, F_int, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(F_int)
         )
 
         self.psi = nn.Sequential(
-            nn.Conv2d(F_int, 1, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.Conv2d(F_int, 1, kernel_size=3, stride=1, padding=1, bias=True),
             nn.BatchNorm2d(1),
             nn.Sigmoid()
         )
@@ -503,6 +337,7 @@ class Attention_block(nn.Module):
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, g, x):
+        g = self.up(g)
         g1 = self.W_g(g)
         x1 = self.W_x(x)
         psi = self.relu(g1 + x1)
@@ -528,10 +363,10 @@ class AA_UNet(nn.Module):
 
         # define extra modules
 
-        self.respath1 = CBAM(256)
-        self.respath2 = CBAM(128)
-        self.respath3 = CBAM(64)
-        self.respath4 = CBAM(64)
+        self.respath1 = CBAM(64)
+        self.respath2 = CBAM(64)
+        self.respath3 = CBAM(128)
+        self.respath4 = CBAM(256)
 
         self.fpa = FPABlock(512,512)
     
@@ -545,10 +380,10 @@ class AA_UNet(nn.Module):
         self.block4 = self.encoder_layers[6]
         self.block5 = self.encoder_layers[7]
 
-        self.mhca1 = MHCABlock(1,256)
-        self.mhca2 = MHCABlock(1,128)
-        self.mhca3 = MHCABlock(1,64)
-        self.mhca4 = MHCABlock(1,64)
+        self.mhca1 = Attention_block(256,512,256)
+        self.mhca2 = Attention_block(128,256,128)
+        self.mhca3 = Attention_block(64,128,64)
+        self.mhca4 = Attention_block(64,64,32)
 
     
         # freeze weights of last block
@@ -597,6 +432,12 @@ class AA_UNet(nn.Module):
         block3 = self.block3(block2)
         block4 = self.block4(block3)
 
+        if self.respath:
+            block1 = self.respath1(block1)
+            block2 = self.respath2(block2)
+            block3 = self.respath3(block3)
+            block4 = self.respath4(block4)
+
 
         # bottleneck
         block5 = self.block5(block4)
@@ -610,11 +451,7 @@ class AA_UNet(nn.Module):
         x = self.up_conv6(block5)
 
         # level 4
-        if self.respath:
-            block4 = self.respath4(block4)
-
         
-
         x = torch.cat([x, block4], dim=1)
         x = self.conv6(x)
 
@@ -626,12 +463,7 @@ class AA_UNet(nn.Module):
 
         x = self.up_conv7(x)
 
-        # level 3
-
-        if self.respath:
-            block3 = self.respath3(block3)
-        
-        
+        # level 3 
         
         x = torch.cat([x, block3], dim=1)
         x = self.conv7(x)
@@ -646,26 +478,16 @@ class AA_UNet(nn.Module):
 
         # level 2
 
-        if self.respath:
-            block2 = self.respath2(block2)
-        
-
         x = torch.cat([x, block2], dim=1)
         x = self.conv8(x)
 
         if self.training and self.deep_supervision:
             x3 = self.output3(x)
 
-        
-
-
         x = self.up_conv9(x)
 
         # level 1
-        if self.respath:
-            block1 = self.respath1(block1)
-        
-
+    
         x = torch.cat([x, block1], dim=1)
         x = self.conv9(x)
 
@@ -687,7 +509,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = AA_UNet(fpa_block=True,respaths=False,deep_supervision=True,mhca=True)
+    net = AA_UNet(fpa_block=True,respaths=True,deep_supervision=True,mhca=True)
     
     print(summary(net))
     # torch.save(net.state_dict(), 'model.pth')
