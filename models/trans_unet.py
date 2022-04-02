@@ -292,10 +292,16 @@ class transUnet(nn.Module):
         for block in self.blocks:
             projections = block(projections)
         
+        print(projections.shape)
         projections = projections.transpose(1,2)
+        print(projections.shape)
         projections = projections.reshape(n_samples,self.embed_dim,int(self.img_size/16),int(self.img_size/16))
+
+        print(projections.shape)
         
         x1 = projections
+
+        print(x1.shape)
         
         x1 = self.deconv1(x1)     #(n,512,224/16,224/16)
 

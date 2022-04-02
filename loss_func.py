@@ -41,7 +41,7 @@ class BinaryMetrics():
             activated_pred = activation_fn(y_pred)
         elif self.activation == "0-1":
             sigmoid_pred = nn.Sigmoid()(y_pred)
-            activated_pred = (sigmoid_pred > 0.5).float().to(y_pred.device)
+            activated_pred = (sigmoid_pred > 5.0e-4).float().to(y_pred.device)
         else:
             raise NotImplementedError("Not a supported activation!")
 

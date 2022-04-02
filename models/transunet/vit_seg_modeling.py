@@ -122,7 +122,7 @@ class Mlp(nn.Module):
 class Embeddings(nn.Module):
     """Construct the embeddings from patch, position embeddings.
     """
-    def __init__(self, config, img_size, in_channels=3):
+    def __init__(self, config, img_size, in_channels=5):
         super(Embeddings, self).__init__()
         self.hybrid = None
         self.config = config
@@ -450,4 +450,25 @@ CONFIGS = {
     'testing': configs.get_testing(),
 }
 
+if __name__ == "__main__":
+    batch_size = 4
+    num_classes = 1  # one hot
+    initial_kernels = 32
+    
+    
+    
+    #net = SwinTransformer(pretrain_img_size=256, in_chans=32)
+    
+    config_vt = CONFIGS["R50-ViT-B_16"]
+    net = VisionTransformer(config_vt, img_size=256,num_classes=1)
+    # torch.save(net.state_dict(), 'model.pth')
+    CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
 
+    print("Input:", CT.shape)
+    if torch.cuda.is_available():
+        net = net.cuda()
+        CT = CT.cuda()
+        torch.cuda.empty_cache()
+
+    segmentation_prediction = net(CT)
+    print("Output:",segmentation_prediction.shape)

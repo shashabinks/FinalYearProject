@@ -24,8 +24,8 @@ import os
 import numpy as np
 from scipy.spatial.distance import directed_hausdorff
 
-from monai import metrics as mt
-from hausdorffDistance import HausdorffDistance
+import segmentation_models_pytorch as smp
+
 
 # MODELS
 from models.DSAnet import UNet_2D
@@ -34,7 +34,12 @@ from models.mult_res_unet import MultiResNet
 from models.trans_unet import transUnet
 from models.sa_unet import SAUNet_2D
 from models.resUnet import SResUnet
-from models.RPDnet import RPDNet
+#from models.RPDnet import RPDNet
+from models.transunet.vit_seg_modeling import VisionTransformer
+from models.transunet.vit_seg_modeling import CONFIGS
+from models.final_net import RPDNet
+
+from loss_func import BinaryMetrics
 # Training Hyperparameters for replication of work:
 # U-Net
 # Attention U-Net
@@ -49,11 +54,11 @@ from models.RPDnet import RPDNet
 
 
 # hyperparameters
-LEARNING_RATE = 0.01
+LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 200+1
-NUM_WORKERS = 2
+NUM_EPOCHS = 100 + 1
+NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
 PIN_MEMORY = True
@@ -62,7 +67,8 @@ TRANSFORMER = False
 DEEP_SUPERVISION = False
 
 
-metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"train_focal":[],"val_dice":[],"train_loss":[],"val_loss":[],"val_focal":[]}
+metrics = {"train_bce":[],"val_bce":[],"train_dice":[],"val_dice":[],"train_loss":[],"val_loss":[], "train_jaccard":[], "val_jaccard":[]
+            , "train_precision":[], "val_precision":[], "train_recall":[], "val_recall":[]}
       
 # define training function
 def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
@@ -110,15 +116,19 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         train_loss = curr_metrics['loss'] / epoch_samples
         train_acc = curr_metrics["dice_coeff"] / epoch_samples
         train_bce = curr_metrics['bce'] / epoch_samples
-        train_focal = curr_metrics['focal_loss'] / epoch_samples
+        train_jaccard = curr_metrics['jaccard'] / epoch_samples
+        train_precision = curr_metrics['precision'] / epoch_samples
+        train_recall = curr_metrics['recall'] / epoch_samples
 
         metrics["train_loss"].append(train_loss)
         metrics["train_dice"].append(train_acc)
         metrics["train_bce"].append(train_bce)
-        metrics["train_focal"].append(train_focal)
+        metrics["train_precision"].append(train_precision)
+        metrics["train_recall"].append(train_recall)
+        metrics["train_jaccard"].append(train_jaccard)
         
         print(f"Epoch: {epoch}")
-        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce} Train Focal: {train_focal}")
+        print(f"Train Loss: {train_loss} Train Dice Score: {train_acc} Train BCE: {train_bce} Train Jaccard: {train_jaccard} Train Precision: {train_precision} Train Recall: {train_recall}")
         
         epoch_val_acc = 0.0
 
@@ -216,25 +226,53 @@ def focal_loss(pred, targets,alpha,gamma):
                        
     return focal_loss
     
-def compute_hausdorff(y_pred, y_true):
+def compute_hausdorff(preds, targets):
     '''
-    get directed hausdorff
+    :param probs: 4 x 1 x 256 x 256
+    :param target:
+    :return:
     '''
 
-    shape = y_pred.shape
-    y_true = torch.squeeze(y_true).data.cpu().numpy()
-    y_pred = torch.squeeze(y_pred).data.cpu().numpy()
+    hd = 0.0
 
-    y_pred = np.reshape(y_pred, (shape[0],shape[1]))
+    # calculate the hausdorff distance for each individual image per batch
+    for i in range(0,preds.shape[0]):
+        output = preds[i, : , : , :].detach().cpu().squeeze().numpy()
+        segment = targets[i, : , : , :].detach().cpu().squeeze().numpy()
+        dh1 = directed_hausdorff(output, segment)[0]
+        dh2 = directed_hausdorff(segment, output)[0]
+        hd += np.max([dh1, dh2])
 
+    # return the total hd for this batch of images
+    return hd 
 
-    
-    hd1 = directed_hausdorff(y_pred, y_true)[0]
-    hd2 = directed_hausdorff(y_pred, y_true)[0]
+def jaccard_coeff(inputs, targets):
+    eps = 1.0
 
-    return max(hd1, hd2)
+    inputs = inputs.contiguous()
+    targets = targets.contiguous()
 
+    intersection = (inputs * targets).sum(dim=2).sum(dim=2)   
+    union = (inputs.sum(dim=2).sum(dim=2) + targets.sum(dim=2).sum(dim=2)) - intersection
 
+    return (intersection / (union + eps)).mean()
+
+def precision_and_recall(input , target):
+
+    eps = 1e-5
+
+    input = input.view(-1)
+    target = target.view(-1).float()
+
+    tp = torch.sum(input * target)  # TP
+    fp = torch.sum(input * (1 - target))  # FP
+    fn = torch.sum((1 - input) * target)  # FN
+    tn = torch.sum((1 - input) * (1 - target))  # TN
+
+    precision = (tp + eps) / (tp + fp + eps)
+    recall = (tp + eps) / (tp + fn + eps)
+
+    return precision, recall
 
 # separate this bit and move the dc loss function into the train.py file...
 # calculate weighted loss
@@ -243,16 +281,15 @@ def calc_loss(pred, target, curr_metrics):
     bce_weight = 0.5
     
     bce = calc_bce(pred,target)
+
     
+    
+    # sigmoid activation
     pred = torch.sigmoid(pred)
 
-    
+    precision, recall = precision_and_recall(pred,target)
 
-    #hd = compute_hausdorff(pred,target)
-
-    
-
-    actual_loss = focal_loss(pred,target,20,1)
+    jaccard = jaccard_coeff(pred,target)
     
     dice,dice_coeff = dc_loss(pred, target)
 
@@ -262,7 +299,9 @@ def calc_loss(pred, target, curr_metrics):
     curr_metrics['bce'] += bce.data.cpu().numpy() * target.size(0)
     curr_metrics['dice_coeff'] += dice_coeff.data.cpu().numpy() * target.size(0)
     curr_metrics['loss'] += loss.data.cpu().numpy() * target.size(0)
-    #curr_metrics['focal_loss'] += hd.data.cpu().numpy() * target.size(0)
+    curr_metrics['precision'] += precision.data.cpu().numpy() * target.size(0)
+    curr_metrics['recall'] += recall.data.cpu().numpy() * target.size(0)
+    curr_metrics['jaccard'] += jaccard.data.cpu().numpy() * target.size(0)
     
     return bce
 
@@ -317,14 +356,21 @@ def check_accuracy(loader, model, device="cuda"):
     val_dsc = curr_metrics['dice_coeff'] / epoch_samples
     val_bce = curr_metrics["bce"] / epoch_samples
     val_loss = curr_metrics['loss'] / epoch_samples
-    val_focal = curr_metrics['focal_loss'] / epoch_samples
+  
+    val_jaccard = curr_metrics['jaccard'] / epoch_samples
+    val_precision = curr_metrics['precision'] / epoch_samples
+    val_recall = curr_metrics['recall'] / epoch_samples
 
     metrics["val_loss"].append(val_loss)
     metrics["val_dice"].append(val_dsc)
     metrics["val_bce"].append(val_bce)
-    metrics["val_focal"].append(val_focal)
+    metrics["val_precision"].append(val_precision)
+    metrics["val_recall"].append(val_recall)
+    metrics["val_jaccard"].append(val_jaccard)
     
-    print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce} Validation Focal: {val_focal}")
+
+    
+    print(f"Validation Loss: {val_loss} Validation Dice Score: {val_dsc} Validation BCE: {val_bce} Val Jaccard: {val_jaccard} Val Precision: {val_precision} Train Recall: {val_recall}")
     
     model.train()
 
@@ -369,7 +415,7 @@ def multi_check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    #"""
+    """
     # load pretrained vit model for weight extraction
     m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
     m2 = timm.create_model('resnet50',pretrained='True')
@@ -402,21 +448,22 @@ if __name__ == "__main__":
     
     #for name,param in model.named_parameters():
     #   print(name,param)
-    #"""
+    """
 
 
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
     
-    #model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True)
+    model = RPDNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
     
+    #config_vt = CONFIGS["R50-ViT-B_16"]
+    #model = VisionTransformer(config_vt, img_size=256,num_classes=1)
+    #model.load_from(weights=np.load(config_vt.pretrained_path))
     print(DEVICE)
 
     # change this when u change model
     model.to(DEVICE)
-
-
-    
+ 
     # Need to consider splitting the training set manually
     train_directory = "ISLES/TRAINING"
     val_directory = "ISLES/VALIDATION"
@@ -449,7 +496,7 @@ if __name__ == "__main__":
     valid_dl = DataLoader(val_set, batch_size=BATCH_SIZE, num_workers=NUM_WORKERS ,shuffle=False, pin_memory=True)
 
 
-    optimizer = optim.SGD(model.parameters(), LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
     scheduler = StepLR(optimizer, step_size=200, gamma=0.01)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)

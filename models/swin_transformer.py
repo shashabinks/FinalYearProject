@@ -619,10 +619,11 @@ if __name__ == "__main__":
     
     
     
-    net = SwinTransformer(pretrain_img_size=256, in_chans=32)
+    #net = SwinTransformer(pretrain_img_size=256, in_chans=32)
     
+    net = SwinTransformerBlock(dim=512,num_heads=2)
     # torch.save(net.state_dict(), 'model.pth')
-    CT = torch.randn(batch_size, 32, 256, 256)    # Batchsize, modal, hight,
+    CT = torch.randn(batch_size, 512, 8, 8)    # Batchsize, modal, hight,
 
     print("Input:", CT.shape)
     if torch.cuda.is_available():

@@ -45,76 +45,83 @@ class Flatten(nn.Module):
     def forward(self, x):
         return x.view(x.size(0), -1)
 
-class ChannelGate(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max']):
-        super(ChannelGate, self).__init__()
-        self.gate_channels = gate_channels
-        self.mlp = nn.Sequential(
-            Flatten(),
-            nn.Linear(gate_channels, gate_channels // reduction_ratio),
-            nn.ReLU(),
-            nn.Linear(gate_channels // reduction_ratio, gate_channels)
+class FPABlock(nn.Module):
+    def __init__(self, in_channels, out_channels, upscale_mode="bilinear"):
+        super(FPABlock, self).__init__()
+
+        self.upscale_mode = upscale_mode
+        if self.upscale_mode == "bilinear":
+            self.align_corners = True
+        else:
+            self.align_corners = False
+
+        # global pooling branch
+        self.branch1 = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            ConvBnRelu(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+            ),
+        )
+
+        # midddle branch
+        self.mid = nn.Sequential(
+            ConvBnRelu(
+                in_channels=in_channels,
+                out_channels=out_channels,
+                kernel_size=1,
+                stride=1,
+                padding=0,
             )
-        self.pool_types = pool_types
+        )
+        self.down1 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ConvBnRelu(
+                in_channels=in_channels,
+                out_channels=1,
+                kernel_size=7,
+                stride=1,
+                padding=3,
+            ),
+        )
+        self.down2 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2),
+        )
+        self.down3 = nn.Sequential(
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1),
+            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1),
+        )
+        self.conv2 = ConvBnRelu(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2)
+        self.conv1 = ConvBnRelu(in_channels=1, out_channels=1, kernel_size=7, stride=1, padding=3)
+
     def forward(self, x):
-        channel_att_sum = None
-        for pool_type in self.pool_types:
-            if pool_type=='avg':
-                avg_pool = F.avg_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( avg_pool )
-            elif pool_type=='max':
-                max_pool = F.max_pool2d( x, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( max_pool )
-            elif pool_type=='lp':
-                lp_pool = F.lp_pool2d( x, 2, (x.size(2), x.size(3)), stride=(x.size(2), x.size(3)))
-                channel_att_raw = self.mlp( lp_pool )
-            elif pool_type=='lse':
-                # LSE pool only
-                lse_pool = logsumexp_2d(x)
-                channel_att_raw = self.mlp( lse_pool )
+        h, w = x.size(2), x.size(3)
+        b1 = self.branch1(x)
+        upscale_parameters = dict(mode=self.upscale_mode, align_corners=self.align_corners)
+        b1 = F.interpolate(b1, size=(h, w), **upscale_parameters)
 
-            if channel_att_sum is None:
-                channel_att_sum = channel_att_raw
-            else:
-                channel_att_sum = channel_att_sum + channel_att_raw
+        mid = self.mid(x)
+        x1 = self.down1(x)
+        x2 = self.down2(x1)
+        x3 = self.down3(x2)
+        x3 = F.interpolate(x3, size=(h // 4, w // 4), **upscale_parameters)
 
-        scale = torch.sigmoid( channel_att_sum ).unsqueeze(2).unsqueeze(3).expand_as(x)
-        return x * scale
+        x2 = self.conv2(x2)
+        x = x2 + x3
+        x = F.interpolate(x, size=(h // 2, w // 2), **upscale_parameters)
 
-def logsumexp_2d(tensor):
-    tensor_flatten = tensor.view(tensor.size(0), tensor.size(1), -1)
-    s, _ = torch.max(tensor_flatten, dim=2, keepdim=True)
-    outputs = s + (tensor_flatten - s).exp().sum(dim=2, keepdim=True).log()
-    return outputs
+        x1 = self.conv1(x1)
+        x = x + x1
+        x = F.interpolate(x, size=(h, w), **upscale_parameters)
 
-class ChannelPool(nn.Module):
-    def forward(self, x):
-        return torch.cat( (torch.max(x,1)[0].unsqueeze(1), torch.mean(x,1).unsqueeze(1)), dim=1 )
-
-class SpatialGate(nn.Module):
-    def __init__(self):
-        super(SpatialGate, self).__init__()
-        kernel_size = 7
-        self.compress = ChannelPool()
-        self.spatial = BasicConv(2, 1, kernel_size, stride=1, padding=(kernel_size-1) // 2, relu=False)
-    def forward(self, x):
-        x_compress = self.compress(x)
-        x_out = self.spatial(x_compress)
-        scale = torch.sigmoid(x_out) # broadcasting
-        return x * scale
-
-class CBAM(nn.Module):
-    def __init__(self, gate_channels, reduction_ratio=16, pool_types=['avg', 'max'], no_spatial=False):
-        super(CBAM, self).__init__()
-        self.ChannelGate = ChannelGate(gate_channels, reduction_ratio, pool_types)
-        self.no_spatial=no_spatial
-        if not no_spatial:
-            self.SpatialGate = SpatialGate()
-    def forward(self, x):
-        x_out = self.ChannelGate(x)
-        if not self.no_spatial:
-            x_out = self.SpatialGate(x_out)
-        return x_out
+        x = torch.mul(x, mid)
+        x = x + b1
+        return x
 
 class ResPath(nn.Module):
     def __init__(self, in_ch, out_ch, length):
@@ -311,83 +318,6 @@ class MHSABlock(nn.Module):
         
         return att
 
-class FPABlock(nn.Module):
-    def __init__(self, in_channels, out_channels, upscale_mode="bilinear"):
-        super(FPABlock, self).__init__()
-
-        self.upscale_mode = upscale_mode
-        if self.upscale_mode == "bilinear":
-            self.align_corners = True
-        else:
-            self.align_corners = False
-
-        # global pooling branch
-        self.branch1 = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            ConvBnRelu(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=1,
-                stride=1,
-                padding=0,
-            ),
-        )
-
-        # midddle branch
-        self.mid = nn.Sequential(
-            ConvBnRelu(
-                in_channels=in_channels,
-                out_channels=out_channels,
-                kernel_size=1,
-                stride=1,
-                padding=0,
-            )
-        )
-        self.down1 = nn.Sequential(
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            ConvBnRelu(
-                in_channels=in_channels,
-                out_channels=1,
-                kernel_size=7,
-                stride=1,
-                padding=3,
-            ),
-        )
-        self.down2 = nn.Sequential(
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2),
-        )
-        self.down3 = nn.Sequential(
-            nn.MaxPool2d(kernel_size=2, stride=2),
-            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1),
-            ConvBnRelu(in_channels=1, out_channels=1, kernel_size=3, stride=1, padding=1),
-        )
-        self.conv2 = ConvBnRelu(in_channels=1, out_channels=1, kernel_size=5, stride=1, padding=2)
-        self.conv1 = ConvBnRelu(in_channels=1, out_channels=1, kernel_size=7, stride=1, padding=3)
-
-    def forward(self, x):
-        h, w = x.size(2), x.size(3)
-        b1 = self.branch1(x)
-        upscale_parameters = dict(mode=self.upscale_mode, align_corners=self.align_corners)
-        b1 = F.interpolate(b1, size=(h, w), **upscale_parameters)
-
-        mid = self.mid(x)
-        x1 = self.down1(x)
-        x2 = self.down2(x1)
-        x3 = self.down3(x2)
-        x3 = F.interpolate(x3, size=(h // 4, w // 4), **upscale_parameters)
-
-        x2 = self.conv2(x2)
-        x = x2 + x3
-        x = F.interpolate(x, size=(h // 2, w // 2), **upscale_parameters)
-
-        x1 = self.conv1(x1)
-        x = x + x1
-        x = F.interpolate(x, size=(h, w), **upscale_parameters)
-
-        x = torch.mul(x, mid)
-        x = x + b1
-        return x
 
 def double_conv(in_channels, out_channels):
     return nn.Sequential(
@@ -405,17 +335,71 @@ def up_conv(in_channels, out_channels):
         in_channels, out_channels, kernel_size=2, stride=2
     )
 
+class MHCABlock(nn.Module):
+    def __init__(self, heads, channels, dropout = 0.0, pos_enc = True):
+        super().__init__()
+        self.pos_enc = pos_enc
+
+        self.mha = MultiHeadAttention(heads, channels, dropout)
+
+        #VERIFY
+        self.conv_S = nn.Sequential( 
+            nn.MaxPool2d(2),
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.conv_Y = nn.Sequential(
+            nn.Conv2d(channels * 2, channels, kernel_size=1, stride=1, bias=False), 
+            nn.BatchNorm2d(channels),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+        )
+        self.block_Z = nn.Sequential(
+            nn.Conv2d(channels, channels, kernel_size=1, stride=1, bias=False),
+            nn.BatchNorm2d(channels),
+            nn.Sigmoid(),
+            nn.ConvTranspose2d(channels, channels, kernel_size=2, stride=2),
+        )
+
+
+    def forward(self, Y, S):
+        Sb, Sc, Sh, Sw = S.size()
+        Yb, Yc, Yh, Yw = Y.size()
+
+        
+        
+
+        if self.pos_enc:
+            S = S + positional_encoding_2d(Sc, Sh, Sw, device=S.device)
+            Y = Y + positional_encoding_2d(Yc, Yh, Yw, device=Y.device)
+
+
+
+        V = self.conv_S(S).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+        KQ = self.conv_Y(Y).reshape(Yb, Sc, Yh*Yw).permute(0, 2, 1)
+
+        Z = self.mha(KQ, KQ, V).permute(0, 2, 1).reshape(Yb, Sc, Yh, Yw)
+
+        del KQ, V, Yb, Sc, Yh, Yw
+
+        Z = self.block_Z(Z)
+
+        Z =  Z * S
+        del S
+
+        return Z
+
 
 
 class RPDNet(nn.Module):
     """Shallow Unet with ResNet18 or ResNet34 encoder.
     """
 
-    def __init__(self, *, pretrained=False, out_channels=1,freeze=False, fpa_block=False, respaths=False,deep_supervision=False,cbam = False):
+    def __init__(self, *, pretrained=False, out_channels=1,freeze=False, fpa_block=False, respaths=False,deep_supervision=False,mhca=False):
         super().__init__()
         self.encoder = torchvision.models.resnet34(pretrained=pretrained)
 
-        self.cbam = cbam
+        self.mhca = mhca
         self.fpa_block = fpa_block
         self.deep_supervision = deep_supervision
         self.respath = respaths
@@ -439,6 +423,10 @@ class RPDNet(nn.Module):
         self.block3 = self.encoder_layers[5]
         self.block4 = self.encoder_layers[6]
         self.block5 = self.encoder_layers[7]
+
+        self.mhca1 = MHCABlock(1,256)
+        self.mhca2 = MHCABlock(1,128)
+        self.mhca3 = MHCABlock(1,64)
 
     
         # freeze weights of last block
@@ -487,24 +475,32 @@ class RPDNet(nn.Module):
         block3 = self.block3(block2)
         block4 = self.block4(block3)
 
+
         # bottleneck
         block5 = self.block5(block4)
 
         if self.fpa_block:
             x = self.fpa(block5)
 
-        x = self.up_conv6(block5)
+        if self.mhca:
+            block4 = self.mhca1(x,block4)
 
+        x = self.up_conv6(block5)
 
         # level 4
         if self.respath:
             block4 = self.respath4(block4)
+
+        
 
         x = torch.cat([x, block4], dim=1)
         x = self.conv6(x)
 
         if self.training and self.deep_supervision:
             x1 = self.output1(x)
+
+        if self.mhca:
+            block3 = self.mhca2(x,block3)
 
         x = self.up_conv7(x)
 
@@ -513,11 +509,16 @@ class RPDNet(nn.Module):
         if self.respath:
             block3 = self.respath3(block3)
         
+        
+        
         x = torch.cat([x, block3], dim=1)
         x = self.conv7(x)
 
         if self.training and self.deep_supervision:
             x2 = self.output2(x)
+
+        if self.mhca:
+            block2 = self.mhca3(x,block2)
 
         x = self.up_conv8(x)
 
@@ -526,6 +527,7 @@ class RPDNet(nn.Module):
         if self.respath:
             block2 = self.respath2(block2)
         
+
         x = torch.cat([x, block2], dim=1)
         x = self.conv8(x)
 
@@ -561,7 +563,7 @@ if __name__ == "__main__":
     num_classes = 5
     initial_kernels = 32
 
-    net = RPDNet(fpa_block=True,respaths=True,deep_supervision=True)
+    net = RPDNet(fpa_block=True,respaths=False,deep_supervision=True,mhca=True)
     
     print(summary(net))
     # torch.save(net.state_dict(), 'model.pth')
