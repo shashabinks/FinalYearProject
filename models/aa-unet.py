@@ -479,6 +479,36 @@ class MHCABlock(nn.Module):
         del S
 
         return Z
+    
+class Attention_block(nn.Module):
+    def __init__(self, F_g, F_l, F_int):
+        super(Attention_block, self).__init__()
+
+        self.W_g = nn.Sequential(
+            nn.Conv2d(F_l, F_int, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+
+        self.W_x = nn.Sequential(
+            nn.Conv2d(F_g, F_int, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(F_int)
+        )
+
+        self.psi = nn.Sequential(
+            nn.Conv2d(F_int, 1, kernel_size=3, stride=1, padding=0, bias=True),
+            nn.BatchNorm2d(1),
+            nn.Sigmoid()
+        )
+
+        self.relu = nn.ReLU(inplace=True)
+
+    def forward(self, g, x):
+        g1 = self.W_g(g)
+        x1 = self.W_x(x)
+        psi = self.relu(g1 + x1)
+        psi = self.psi(psi)
+        out = x * psi
+        return out
 
 
 
@@ -503,7 +533,7 @@ class AA_UNet(nn.Module):
         self.respath3 = CBAM(64)
         self.respath4 = CBAM(64)
 
-        self.fpa = MHSABlock(4,512)
+        self.fpa = FPABlock(512,512)
     
         self.encoder_layers = list(self.encoder.children())
         self.encoder.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)

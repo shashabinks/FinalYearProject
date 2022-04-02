@@ -57,7 +57,7 @@ from loss_func import BinaryMetrics
 LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 BATCH_SIZE = 4
-NUM_EPOCHS = 100 + 1
+NUM_EPOCHS = 120 + 1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
 IMAGE_WIDTH = 256  
@@ -209,22 +209,25 @@ def calc_bce(pred=None, target=None):
     return bce
 
 
-def focal_loss(pred, targets,alpha,gamma):
-    #inputs = torch.sigmoid(inputs)       
-        
-    #flatten label and prediction tensors
-    #inputs = inputs.view(-1)
-    #targets = targets.view(-1)
+def focal_loss(inputs, targets, smooth=1, alpha=0.5, beta=0.5, gamma=1):
+    
 
-    bceweight = torch.ones_like(targets)  +  20 * targets # create a weight for the bce that correlates to the size of the lesion
+    #comment out if your model contains a sigmoid or equivalent activation layer
+    #inputs = F.sigmoid(inputs)       
     
+    #flatten label and prediction tensors
+    inputs = inputs.view(-1)
+    targets = targets.view(-1)
     
-    #first compute binary cross-entropy 
-    BCE = F.binary_cross_entropy_with_logits(pred, targets,weight=bceweight)
-    BCE_EXP = torch.exp(-BCE)
-    focal_loss = alpha * (1-BCE_EXP)**gamma * BCE
-                       
-    return focal_loss
+    #True Positives, False Positives & False Negatives
+    TP = (inputs * targets).sum()    
+    FP = ((1-targets) * inputs).sum()
+    FN = (targets * (1-inputs)).sum()
+    
+    Tversky = (TP + smooth) / (TP + alpha*FP + beta*FN + smooth)  
+    FocalTversky = (1 - Tversky)**gamma
+                    
+    return FocalTversky
     
 def compute_hausdorff(preds, targets):
     '''
@@ -282,8 +285,6 @@ def calc_loss(pred, target, curr_metrics):
     
     bce = calc_bce(pred,target)
 
-    
-    
     # sigmoid activation
     pred = torch.sigmoid(pred)
 
