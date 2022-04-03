@@ -14,6 +14,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.optim as optim
+from PIL import Image
 
 metrics = {}
 # calculate correlation between the pred image and the label
@@ -96,7 +97,7 @@ def check_accuracy(loader, model, device="cuda"):
     print(f"Validation Loss: {overall_loss} Validation Acc: {overall_dsc}")
     model.train()
 
-def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda"):
+def save_predictions_as_imgs(loader, model, device="cuda"):
     model.eval()
     for idx, (x, y) in enumerate(loader):
         
@@ -113,6 +114,8 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
             f, (ax2, ax3) = plt.subplots(1, 2, figsize=(10,20))
 
             img = preds[0].cpu().squeeze().numpy()
+
+            #print(y.shape)
             gt = y[0].squeeze()
             #img = (img * 255.0).astype(np.int8)
 
@@ -122,6 +125,34 @@ def save_predictions_as_imgs(loader, model, folder="saved_images/", device="cuda
             ax3.imshow(y[0].squeeze(), cmap= 'gray', label="Mask")
             #plt.legend()
             plt.show()
+
+    model.train()
+
+
+# function for saving images
+def save_images(loader, model, device="cuda"):
+    model.eval()
+    for idx, (x, y) in enumerate(loader):
+        
+        x = x.to(device=device)
+        with torch.no_grad():
+            preds = torch.sigmoid(model(x))
+
+            # enable for thresholded values
+            #preds = (preds > 5.0e-4).float()
+            
+        for i in range(y.shape[0]):
+            pred_img = preds[i].cpu().squeeze().numpy()
+            gt_img = y[i].squeeze().numpy()
+
+            pred_img = Image.fromarray(pred_img)
+            gt_img = Image.fromarray(gt_img)
+
+            pred_img = pred_img.convert('RGB')
+            gt_img = gt_img.convert('RGB')
+
+            pred_img.save(f"pred_{idx}_{i}.jpeg")
+            gt_img.save(f"gt_{idx}_{i}.jpeg")
 
     model.train()
     

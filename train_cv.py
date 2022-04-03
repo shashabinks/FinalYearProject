@@ -459,8 +459,8 @@ if __name__ == "__main__":
 
         # find mean dice coefficient of this fold and reset all data for next fold
 
-        mean_train_dice = np.mean(metrics["train_dice"])
-        mean_val_dice = np.mean(metrics["val_dice"])
+        mean_train_dice = np.max(metrics["train_dice"])
+        mean_val_dice = np.max(metrics["val_dice"])
 
         results["train_dice"].append(mean_train_dice)
         results["val_dice"].append(mean_val_dice)

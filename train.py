@@ -40,8 +40,6 @@ from models.aa_transunet.vit_seg_modeling import CONFIGS
 from models.final_net import RPDNet
 from models.aa_unet import AA_UNet
 
-
-from loss_func import BinaryMetrics
 # Training Hyperparameters for replication of work:
 # U-Net
 # Attention U-Net
@@ -58,7 +56,7 @@ from loss_func import BinaryMetrics
 # hyperparameters
 LEARNING_RATE = 0.0001
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 NUM_EPOCHS = 100 + 1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
@@ -153,7 +151,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
                 view_images_multi(loaders[1], model, device=DEVICE)
 
             else:
-                save_predictions_as_imgs(loaders[1], model, folder="saved_images/", device=DEVICE)
+                save_predictions_as_imgs(loaders[1], model, device=DEVICE)
 
             if epoch == NUM_EPOCHS - 1:
                 print("Final Epoch!, Saving model...")
@@ -205,7 +203,7 @@ def to_one_hot(tensor,nClasses):
 
 # weighted due to class imbalance
 def calc_bce(pred=None, target=None):
-    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
+    bceweight = torch.ones_like(target)  +  25 * target # create a weight for the bce that correlates to the size of the lesion
     bce = F.binary_cross_entropy_with_logits(pred,target, weight=bceweight) # the size of the lesions are small therefore it is important to use this
     
     return bce
@@ -252,30 +250,34 @@ def compute_hausdorff(preds, targets):
     return hd 
 
 def jaccard_coeff(inputs, targets):
-    eps = 1.0
 
-    inputs = inputs.view(-1)
-    targets = targets.view(-1)
+    inputs = inputs.contiguous()
+    targets = targets.contiguous()
 
-    intersection = (inputs * targets).sum()  
-    union = (inputs.sum() + targets.sum()) - intersection
+    smooth = 1.
 
-    return (intersection / (union + eps)).mean()
+
+    intersection = (inputs * targets).sum(dim=2).sum(dim=2)  
+    union = (inputs.sum(dim=2).sum(dim=2)  + targets.sum(dim=2).sum(dim=2) ) - intersection
+
+    return (intersection / (union + smooth))
 
 def precision_and_recall(inputs , targets):
 
-    inputs = inputs.view(-1)
-    targets = targets.view(-1)
+    smooth = 1.
 
-    correct = (inputs * targets).sum() 
+    inputs = inputs.contiguous()
+    targets = targets.contiguous()
+    
+    correct = (inputs * targets).sum(dim=2).sum(dim=2)  
 
-    predicted = inputs.sum()  
-    truth = targets.sum()
+    predicted = inputs.sum(dim=2).sum(dim=2)   
+    truth = targets.sum(dim=2).sum(dim=2)  
 
-    precision = correct/(predicted + 1.0)
-    recall = correct/(truth + 1.0)
+    precision = correct/(predicted + smooth)
+    recall = correct/(truth + smooth)
 
-    return precision.mean(), recall.mean()
+    return precision, recall
 
 # separate this bit and move the dc loss function into the train.py file...
 # calculate weighted loss
@@ -418,41 +420,6 @@ def multi_check_accuracy(loader, model, device="cuda"):
 if __name__ == "__main__":
     torch.cuda.empty_cache()
 
-    """
-    # load pretrained vit model for weight extraction
-    m1 = timm.create_model('vit_base_patch16_384',pretrained='True')
-    m2 = timm.create_model('resnet50',pretrained='True')
-
-    #for name,param in m1.named_parameters():
-     #   print(name)
-    
-    # declare model
-    model = transUnet()
-
-    #summary(model, input_data=(5,256,256))
-
-    # create model weight dict
-    transunet_model_dict = model.state_dict()
-
-    #model.load_from(weights=np.load("imagenet21k_R50+ViT-B_16.npz"))
-
-    # load the model weights only for the specific parts like ViT
-    pretrained_dict = {k: v for k, v in m1.state_dict().items() if k in transunet_model_dict}
-    pretrained_dict_1 = {k: v for k, v in m2.state_dict().items() if k in transunet_model_dict}
-
-    # update weight dict
-    transunet_model_dict.update(pretrained_dict)
-    transunet_model_dict.update(pretrained_dict_1)
-
-    # load weights
-    model.load_state_dict(transunet_model_dict)
-
-    
-    
-    #for name,param in model.named_parameters():
-    #   print(name,param)
-    """
-
 
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
@@ -472,13 +439,13 @@ if __name__ == "__main__":
     val_directory = "ISLES/VALIDATION"
 
     modalities = ['OT', 'CT', 'CT_CBV', 'CT_CBF', 'CT_Tmax' , 'CT_MTT'] # remove ct image and try with only the other
-    #modalities = ['OT', 'CT_4DPWI'] # remove ct image and try with only the other
+    
     
     ### NEW STUFF ###
     directory = "ISLES/TRAINING"
     dataset = load_data(directory)
 
-    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=20) # 30 before
+    train_data,val_data = train_test_split(dataset, test_size=0.3, train_size=0.7,random_state=25) # 20 before
 
     print( "Number of Patient Cases: ", len(dataset))
     
@@ -500,11 +467,11 @@ if __name__ == "__main__":
 
 
     optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=200, gamma=0.01)
+    scheduler = StepLR(optimizer, step_size=200, gamma=0.0001)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
 
-    fig, (ax1, ax2) = plt.subplots(1, 2)
+    
     
         
     fig, (ax1, ax2) = plt.subplots(1, 2)

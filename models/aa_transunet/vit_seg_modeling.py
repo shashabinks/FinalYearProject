@@ -563,7 +563,7 @@ CONFIGS = {
 }
 
 if __name__ == "__main__":
-    batch_size = 4
+    batch_size = 6
     num_classes = 1  # one hot
     initial_kernels = 32
     
