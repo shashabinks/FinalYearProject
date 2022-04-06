@@ -7,9 +7,9 @@ def get_b16_config():
     config.hidden_size = 768
     config.transformer = ml_collections.ConfigDict()
     config.transformer.mlp_dim = 3072
-    config.transformer.num_heads = 8
+    config.transformer.num_heads = 12
     config.transformer.num_layers = 1 # change this to 1
-    config.transformer.attention_dropout_rate = 0.2 # 0 before
+    config.transformer.attention_dropout_rate = 0.0 # 0 before
     config.transformer.dropout_rate = 0.2
 
     config.classifier = 'seg'

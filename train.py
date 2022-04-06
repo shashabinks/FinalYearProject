@@ -1,21 +1,21 @@
 from collections import defaultdict
 from math import gamma
 import torch
-import torch.nn as nn
+
 from torch.nn import functional as F
-import timm
-from torch.autograd import Variable
 
 
-from torchsummary import summary
+
+
+
 #from datasetloader import train_ISLES2018_loader,val_ISLES2018_loader
 from patient_dataloader_aug import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 #from patient_dataloader_mri import train_ISLES2018_loader,val_ISLES2018_loader, load_data
 import matplotlib.pyplot as plt
 import torch
 from sklearn.model_selection import train_test_split
-import torch.nn as nn
-from torchvision.utils import make_grid
+
+
 import torch.optim as optim
 from torch.utils.data import DataLoader, random_split
 from utils import save_predictions_as_imgs
@@ -24,10 +24,11 @@ import os
 import numpy as np
 from scipy.spatial.distance import directed_hausdorff
 
-import segmentation_models_pytorch as smp
+
 
 
 # MODELS
+"""
 from models.DSAnet import UNet_2D
 from models.a_unet_model import UNet_Attention
 from models.mult_res_unet import MultiResNet
@@ -35,10 +36,15 @@ from models.trans_unet import transUnet
 from models.sa_unet import SAUNet_2D
 from models.resUnet import SResUnet
 #from models.RPDnet import RPDNet
+"""
 from models.aa_transunet.vit_seg_modeling import VisionTransformer
 from models.aa_transunet.vit_seg_modeling import CONFIGS
+"""
 from models.final_net import RPDNet
-from models.aa_unet import AA_UNet
+"""
+from models.mhca_unet import AA_UNet
+#from models.levit import Build_LeViT_UNet_128s
+from models.utnetv2 import UTNetV2
 
 # Training Hyperparameters for replication of work:
 # U-Net
@@ -54,9 +60,9 @@ from models.aa_unet import AA_UNet
 
 
 # hyperparameters
-LEARNING_RATE = 0.0001
+LEARNING_RATE = 0.00002
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 8
+BATCH_SIZE = 4
 NUM_EPOCHS = 100 + 1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
@@ -80,7 +86,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
     
     # iterate through the epochs
     for epoch in range(0,num_of_epochs):
-
+        sample = 0
         epoch_samples = 0
         curr_metrics = defaultdict(float)
 
@@ -95,7 +101,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
             optimizer.zero_grad()
     
             epoch_samples += train_image.size(0) # batch num
-            
+            sample += 1
             
             # prediction
             out = model(train_image)
@@ -116,9 +122,9 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         train_loss = curr_metrics['loss'] / epoch_samples
         train_acc = curr_metrics["dice_coeff"] / epoch_samples
         train_bce = curr_metrics['bce'] / epoch_samples
-        train_jaccard = curr_metrics['jaccard'] / epoch_samples
-        train_precision = curr_metrics['precision'] / epoch_samples
-        train_recall = curr_metrics['recall'] / epoch_samples
+        train_jaccard = curr_metrics['jaccard'] / sample
+        train_precision = curr_metrics['precision'] / sample
+        train_recall = curr_metrics['recall'] / sample
 
         metrics["train_loss"].append(train_loss)
         metrics["train_dice"].append(train_acc)
@@ -169,6 +175,7 @@ def view_images_multi(loader, model, device="cuda"):
         x = x.to(device=device)
         with torch.no_grad():
             preds = torch.sigmoid(model(x)[0])
+            #preds = (preds > 5.0e-4).float()
         
         if idx == 1 or idx == 2 or idx == 4 or idx == 6 or idx == 8:
             f, (ax2, ax3) = plt.subplots(1, 2, figsize=(10,20))
@@ -203,26 +210,26 @@ def to_one_hot(tensor,nClasses):
 
 # weighted due to class imbalance
 def calc_bce(pred=None, target=None):
-    bceweight = torch.ones_like(target)  +  25 * target # create a weight for the bce that correlates to the size of the lesion
+    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
     bce = F.binary_cross_entropy_with_logits(pred,target, weight=bceweight) # the size of the lesions are small therefore it is important to use this
     
     return bce
 
 
-def focal_loss(inputs, targets, smooth=1, alpha=0.7, beta=0.3, gamma=1):
+def focal_loss(inputs, targets, smooth=1, alpha=0.7, beta=0.3, gamma=0.75):
     
 
     #comment out if your model contains a sigmoid or equivalent activation layer
     #inputs = F.sigmoid(inputs)       
     
     #flatten label and prediction tensors
-    inputs = inputs.view(-1)
-    targets = targets.view(-1)
+    inputs = inputs.contiguous()
+    targets = targets.contiguous()
     
     #True Positives, False Positives & False Negatives
-    TP = (inputs * targets).sum()    
-    FP = ((1-targets) * inputs).sum()
-    FN = (targets * (1-inputs)).sum()
+    TP = (inputs * targets).sum(dim=2).sum(dim=2)    
+    FP = ((1-targets) * inputs).sum(dim=2).sum(dim=2) 
+    FN = (targets * (1-inputs)).sum(dim=2).sum(dim=2) 
     
     Tversky = (TP + smooth) / (TP + alpha*FP + beta*FN + smooth)  
     FocalTversky = (1 - Tversky)**gamma
@@ -260,7 +267,7 @@ def jaccard_coeff(inputs, targets):
     intersection = (inputs * targets).sum(dim=2).sum(dim=2)  
     union = (inputs.sum(dim=2).sum(dim=2)  + targets.sum(dim=2).sum(dim=2) ) - intersection
 
-    return (intersection / (union + smooth))
+    return (intersection / (union + smooth)).mean()
 
 def precision_and_recall(inputs , targets):
 
@@ -277,7 +284,7 @@ def precision_and_recall(inputs , targets):
     precision = correct/(predicted + smooth)
     recall = correct/(truth + smooth)
 
-    return precision, recall
+    return precision.mean(), recall.mean()
 
 # separate this bit and move the dc loss function into the train.py file...
 # calculate weighted loss
@@ -324,6 +331,10 @@ def multi_loss_function(preds, target, curr_metrics):
     bce = (pred_1 + pred_2 + pred_3 + pred_4) 
     
     pred = torch.sigmoid(preds[0])
+
+    precision, recall = precision_and_recall(pred,target)
+
+    jaccard = jaccard_coeff(pred,target)
     
     # use the final layer output to calculate the dice score
     dice,dice_coeff = dc_loss(pred, target)
@@ -334,6 +345,9 @@ def multi_loss_function(preds, target, curr_metrics):
     curr_metrics['bce'] += bce.data.cpu().numpy() * target.size(0)
     curr_metrics['dice_coeff'] += dice_coeff.data.cpu().numpy() * target.size(0)
     curr_metrics['loss'] += loss.data.cpu().numpy() * target.size(0)
+    curr_metrics['precision'] += precision.data.cpu().numpy() * target.size(0)
+    curr_metrics['recall'] += recall.data.cpu().numpy() * target.size(0)
+    curr_metrics['jaccard'] += jaccard.data.cpu().numpy() * target.size(0)
     
     return bce
 
@@ -345,6 +359,7 @@ def check_accuracy(loader, model, device="cuda"):
     with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
         epoch_samples = 0
         curr_metrics = defaultdict(float)
+        sample = 0
 
         for x, y in loader:
             
@@ -354,6 +369,7 @@ def check_accuracy(loader, model, device="cuda"):
             pred = model(x)
 
             epoch_samples += x.size(0)
+            sample += 1
 
             # loss
             loss = calc_loss(pred, y, curr_metrics)
@@ -362,9 +378,9 @@ def check_accuracy(loader, model, device="cuda"):
     val_bce = curr_metrics["bce"] / epoch_samples
     val_loss = curr_metrics['loss'] / epoch_samples
   
-    val_jaccard = curr_metrics['jaccard'] / epoch_samples
-    val_precision = curr_metrics['precision'] / epoch_samples
-    val_recall = curr_metrics['recall'] / epoch_samples
+    val_jaccard = curr_metrics['jaccard'] / sample
+    val_precision = curr_metrics['precision'] / sample
+    val_recall = curr_metrics['recall'] / sample
 
     metrics["val_loss"].append(val_loss)
     metrics["val_dice"].append(val_dsc)
@@ -388,6 +404,7 @@ def multi_check_accuracy(loader, model, device="cuda"):
     with torch.no_grad():       # we want to compare the mask and the predictions together / for binary
         epoch_samples = 0
         curr_metrics = defaultdict(float)
+        sample = 0
 
         for x, y in loader:
             
@@ -397,6 +414,7 @@ def multi_check_accuracy(loader, model, device="cuda"):
             pred = model(x)
 
             epoch_samples += x.size(0)
+            sample += 1
 
             # loss
             loss = calc_loss(pred, y, curr_metrics)
@@ -424,11 +442,12 @@ if __name__ == "__main__":
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
     
-    #model = AA_UNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
-    
-    config_vt = CONFIGS["R50-ViT-B_16"]
-    model = VisionTransformer(config_vt, img_size=256,num_classes=1)
-    #model.load_from(weights=np.load(config_vt.pretrained_path))
+   # model = AA_UNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
+    #model = Build_LeViT_UNet_128s(num_classes=1,pretrained=True)
+    #config_vt = CONFIGS["R50-ViT-B_16"]
+    #model = VisionTransformer(config_vt, img_size=256,num_classes=1,deep_supervision=False)
+  
+    model = UTNetV2(5,1)
     print(DEVICE)
 
     # change this when u change model
@@ -476,8 +495,8 @@ if __name__ == "__main__":
         
     fig, (ax1, ax2) = plt.subplots(1, 2)
         
-    ax1.plot(metrics["train_loss"],label="training loss")
-    ax1.plot(metrics["val_loss"], label="validation loss")
+    ax1.plot(metrics["train_bce"],label="training loss")
+    ax1.plot(metrics["val_bce"], label="validation loss")
     ax1.set_ylabel("Loss")
     ax1.set_xlabel("Epochs")
     ax1.set_title("Loss")

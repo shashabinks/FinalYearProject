@@ -1,19 +1,18 @@
-from cProfile import label
+
+from numpy import save
 import torch
 import torch.nn as nn
-import torchvision
+
 from torch.nn import functional as F
-from zmq import device
-import nibabel as nib
+from torchvision.utils import save_image
+
 import matplotlib.pyplot as plt
-import os
-import re
-import numpy as np
-import torchio as tio
+
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
+
 from PIL import Image
 
 metrics = {}
@@ -104,9 +103,19 @@ def save_predictions_as_imgs(loader, model, device="cuda"):
         x = x.to(device=device)
         with torch.no_grad():
             preds = torch.sigmoid(model(x))
-            preds = (preds > 5.0e-4).float()
+            #preds = (preds > 5.0e-4).float()
+
+
+            #save_image(y,f'im_name.png')
+            # apply threshold, so all values are either 1 or 0 then apply other stuff
+            preds = preds * 255
+            preds = preds.to(torch.uint8)
+
+            y = y * 255
+            y = y.to(torch.uint8)
+            y = y * 255
             
-            
+            #print(torch.max(y))
             
             
         
@@ -116,8 +125,18 @@ def save_predictions_as_imgs(loader, model, device="cuda"):
             img = preds[0].cpu().squeeze().numpy()
 
             #print(y.shape)
-            gt = y[0].squeeze()
+            gt = y[0].squeeze().numpy()
             #img = (img * 255.0).astype(np.int8)
+
+            
+
+            pred_img = Image.fromarray(img)
+            gt_img = Image.fromarray(gt)
+
+        
+
+            pred_img.save(f"pred_{idx}.jpeg")
+            gt_img.save(f"gt_{idx}.jpeg")
 
             
             

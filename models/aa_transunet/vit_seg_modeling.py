@@ -318,6 +318,9 @@ class DecoderBlock(nn.Module):
             x = torch.cat([x, skip], dim=1)
         x = self.conv1(x)
         x = self.conv2(x)
+
+        # output of one decoding layer
+
         return x
 
 
@@ -328,9 +331,33 @@ class SegmentationHead(nn.Sequential):
         upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
         super().__init__(conv2d, upsampling)
 
+# DEEP SUPERVISION
+def output1(n_classes):
+    return nn.Sequential(
+        nn.ConvTranspose2d(256, 128, kernel_size=2, stride=2),
+        nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
+        nn.ConvTranspose2d(64, 16, kernel_size=2, stride=2),
+        
+        nn.Conv2d(16, n_classes, kernel_size=1)
+    )
+
+
+def output2(n_classes):
+    return nn.Sequential(
+        nn.ConvTranspose2d(128, 64, kernel_size=2, stride=2),
+        nn.ConvTranspose2d(64, 16, kernel_size=2, stride=2),
+        nn.Conv2d(16, n_classes, kernel_size=1)
+    )
+
+
+def output3(n_classes):
+    return nn.Sequential(
+        nn.ConvTranspose2d(64, 16, kernel_size=2, stride=2),
+        nn.Conv2d(16, n_classes, kernel_size=1)
+    )
 
 class DecoderCup(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config,deep_supervision=False):
         super().__init__()
         self.config = config
         head_channels = 512
@@ -356,6 +383,13 @@ class DecoderCup(nn.Module):
         blocks = [
             DecoderBlock(in_ch, out_ch, sk_ch) for in_ch, out_ch, sk_ch in zip(in_channels, out_channels, skip_channels)
         ]
+
+        self.output1 = output1(1)
+        self.output2 = output2(1)
+        self.output3 = output3(1)
+
+        self.deep_supervision = deep_supervision
+        self.deep_supervision_layers = [self.output1,self.output2,self.output3]
         self.blocks = nn.ModuleList(blocks)
 
         self.cbam_layers = nn.ModuleList([CBAM(512),CBAM(256),CBAM(64)])
@@ -368,7 +402,8 @@ class DecoderCup(nn.Module):
         x = hidden_states.permute(0, 2, 1)
         x = x.contiguous().view(B, hidden, h, w)
         x = self.conv_more(x)
-
+        
+        outputs = []
        
         for i, decoder_block in enumerate(self.blocks):
             if features is not None:
@@ -384,8 +419,16 @@ class DecoderCup(nn.Module):
                 skip = cbam(skip)
 
 
-            # add cbam and attention here?
+            # so x is the output of each decoding layer, so the last layer will just be the standard output segmentation
             x = decoder_block(x,i, skip=skip)
+
+            # check to see deep supervision is enabled and the current layer is a skip connection layer
+            if self.deep_supervision and self.training and (skip is not None):
+                outputs.append(self.deep_supervision_layers[i](x))
+
+        if self.deep_supervision and self.training:
+            return x, outputs
+
         return x
 
 class Flatten(nn.Module):
@@ -480,13 +523,13 @@ class Attention_block(nn.Module):
 
 
 class VisionTransformer(nn.Module):
-    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False):
+    def __init__(self, config, img_size=224, num_classes=21843, zero_head=False, vis=False, deep_supervision=False):
         super(VisionTransformer, self).__init__()
         self.num_classes = num_classes
         self.zero_head = zero_head
         self.classifier = config.classifier
         self.transformer = Transformer(config, img_size, vis)
-        self.decoder = DecoderCup(config)
+        self.decoder = DecoderCup(config,deep_supervision=deep_supervision)
         self.segmentation_head = SegmentationHead(
             in_channels=config['decoder_channels'][-1],
             out_channels=config['n_classes'],
@@ -494,11 +537,23 @@ class VisionTransformer(nn.Module):
         )
         self.config = config
 
+        self.deep_supervision = deep_supervision
+
     def forward(self, x):
         if x.size()[1] == 1:
             x = x.repeat(1,3,1,1)
         x, attn_weights, features = self.transformer(x)  # (B, n_patch, hidden)
+
+        # place fpa module here 
+        
+        # decoder part
         x = self.decoder(x, features)
+
+        if self.deep_supervision and self.training:
+            logits = self.segmentation_head(x[0])
+
+            return logits, x[1][0], x[1][1] , x[1][2]
+
         logits = self.segmentation_head(x)
         return logits
 
@@ -572,7 +627,7 @@ if __name__ == "__main__":
     #net = SwinTransformer(pretrain_img_size=256, in_chans=32)
     
     config_vt = CONFIGS["R50-ViT-B_16"]
-    net = VisionTransformer(config_vt, img_size=256,num_classes=1)
+    net = VisionTransformer(config_vt, img_size=256,num_classes=1,deep_supervision=True)
     # torch.save(net.state_dict(), 'model.pth')
     CT = torch.randn(batch_size, 5, 256, 256)    # Batchsize, modal, hight,
 
@@ -583,4 +638,6 @@ if __name__ == "__main__":
         torch.cuda.empty_cache()
 
     segmentation_prediction = net(CT)
-    print("Output:",segmentation_prediction.shape)
+
+    print()
+    print("Output:",segmentation_prediction[0].shape , segmentation_prediction[1][0].shape, segmentation_prediction[1][1].shape, segmentation_prediction[1][2].shape )
