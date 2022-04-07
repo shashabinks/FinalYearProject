@@ -363,10 +363,10 @@ class AA_UNet(nn.Module):
 
         # define extra modules
 
-        self.respath1 = CBAM(64)
-        self.respath2 = CBAM(64)
-        self.respath3 = CBAM(128)
-        self.respath4 = CBAM(256)
+        self.respath1 = ResPath(64,64,4)
+        self.respath2 = ResPath(64,64,3)
+        self.respath3 = ResPath(128,128,2)
+        self.respath4 = ResPath(256,256,1)
 
         self.fpa = FPABlock(512,512)
     

@@ -16,8 +16,8 @@ import numpy as np
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 from torch.nn.modules.utils import _pair
 from scipy import ndimage
-from . import vit_seg_configs as configs
-from .vit_seg_modeling_resnet_skip import ResNetV2
+import vit_seg_configs as configs
+from vit_seg_modeling_resnet_skip import ResNetV2
 
 
 logger = logging.getLogger(__name__)
@@ -392,7 +392,7 @@ class DecoderCup(nn.Module):
         self.deep_supervision_layers = [self.output1,self.output2,self.output3]
         self.blocks = nn.ModuleList(blocks)
 
-        self.cbam_layers = nn.ModuleList([CBAM(512),CBAM(256),CBAM(64)])
+        self.cbam_layers = nn.ModuleList([ResPath(512,512,3),ResPath(256,256,2),ResPath(64,64,1)])
 
         
 
@@ -487,6 +487,46 @@ class CBAM(nn.Module):
         x = self.sa(x) * x
         return x
 
+class conv2d_block(nn.Module):
+    def __init__(self, in_ch, out_ch, kernel_size,activation=True):
+        super(conv2d_block, self).__init__()
+
+        if activation:
+          self.conv = nn.Sequential(
+              nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, stride=1, padding=1, bias=False),
+              nn.BatchNorm2d(out_ch),
+              nn.ReLU(inplace=True)
+          )
+        else:
+          self.conv = nn.Sequential(
+              nn.Conv2d(in_ch, out_ch, kernel_size=kernel_size, stride=1, bias=True),
+              nn.BatchNorm2d(out_ch)
+          )
+          
+    def forward(self, x):
+        x = self.conv(x)
+        return x
+
+class ResPath(nn.Module):
+    def __init__(self, in_ch, out_ch, length):
+      super(ResPath,self).__init__()
+      self.len = length
+      self.conv3layers = nn.ModuleList([conv2d_block(in_ch,out_ch,3) for i in range(length)])
+      self.conv1layers = nn.ModuleList([conv2d_block(in_ch,out_ch,1,activation=False) for i in range(length)])
+      self.activation = nn.ReLU(inplace=True)
+      self.Batch = nn.ModuleList([nn.BatchNorm2d(out_ch) for i in range(length)])
+    
+    def forward(self,x):
+      out = x
+      for i in range(self.len):
+        shortcut = out
+        shortcut = self.conv1layers[i](shortcut)
+        out = self.conv3layers[i](out)
+        out = torch.add(shortcut,out)
+        out = self.activation(out)
+        out = self.Batch[i](out)
+      
+      return out
     
 class Attention_block(nn.Module):
     def __init__(self, F_g, F_l, F_int):

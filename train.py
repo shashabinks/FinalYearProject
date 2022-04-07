@@ -37,14 +37,14 @@ from models.sa_unet import SAUNet_2D
 from models.resUnet import SResUnet
 #from models.RPDnet import RPDNet
 """
-from models.aa_transunet.vit_seg_modeling import VisionTransformer
-from models.aa_transunet.vit_seg_modeling import CONFIGS
+#from models.aa_transunet.vit_seg_modeling import VisionTransformer
+#from models.aa_transunet.vit_seg_modeling import CONFIGS
 """
 from models.final_net import RPDNet
 """
-from models.mhca_unet import AA_UNet
+from models.aa_unet import AA_UNet
 #from models.levit import Build_LeViT_UNet_128s
-from models.utnetv2 import UTNetV2
+#from models.utnetv2 import UTNetV2
 
 # Training Hyperparameters for replication of work:
 # U-Net
@@ -60,9 +60,9 @@ from models.utnetv2 import UTNetV2
 
 
 # hyperparameters
-LEARNING_RATE = 0.00002
+LEARNING_RATE = 0.0005
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-BATCH_SIZE = 4
+BATCH_SIZE = 8
 NUM_EPOCHS = 100 + 1
 NUM_WORKERS = 4
 IMAGE_HEIGHT = 256 
@@ -122,7 +122,7 @@ def train_model(model,loaders,optimizer,num_of_epochs,scheduler=None):
         train_loss = curr_metrics['loss'] / epoch_samples
         train_acc = curr_metrics["dice_coeff"] / epoch_samples
         train_bce = curr_metrics['bce'] / epoch_samples
-        train_jaccard = curr_metrics['jaccard'] / sample
+        train_jaccard = curr_metrics['jaccard'] / epoch_samples
         train_precision = curr_metrics['precision'] / sample
         train_recall = curr_metrics['recall'] / sample
 
@@ -210,7 +210,7 @@ def to_one_hot(tensor,nClasses):
 
 # weighted due to class imbalance
 def calc_bce(pred=None, target=None):
-    bceweight = torch.ones_like(target)  +  20 * target # create a weight for the bce that correlates to the size of the lesion
+    bceweight = torch.ones_like(target)  +  25 * target # create a weight for the bce that correlates to the size of the lesion
     bce = F.binary_cross_entropy_with_logits(pred,target, weight=bceweight) # the size of the lesions are small therefore it is important to use this
     
     return bce
@@ -258,6 +258,7 @@ def compute_hausdorff(preds, targets):
 
 def jaccard_coeff(inputs, targets):
 
+    """
     inputs = inputs.contiguous()
     targets = targets.contiguous()
 
@@ -268,6 +269,25 @@ def jaccard_coeff(inputs, targets):
     union = (inputs.sum(dim=2).sum(dim=2)  + targets.sum(dim=2).sum(dim=2) ) - intersection
 
     return (intersection / (union + smooth)).mean()
+
+    
+    """
+
+    smooth = 1e-5
+
+    targets = (targets * 255).float() # convert all mask values to 1 or 0
+    inputs = (inputs > 5e-4).float() # convert all prediction values between 1 or 0
+
+    output = inputs.view(-1)
+    target = targets.view(-1)
+
+    tp = torch.sum(output * target)  # TP
+    fp = torch.sum(output * (1 - target))  # FP
+    fn = torch.sum((1 - output) * target)  # FN
+    tn = torch.sum((1 - output) * (1 - target))  # TN
+
+    jaccard = tp / (tp + fp + fn + smooth)
+    return jaccard
 
 def precision_and_recall(inputs , targets):
 
@@ -378,7 +398,7 @@ def check_accuracy(loader, model, device="cuda"):
     val_bce = curr_metrics["bce"] / epoch_samples
     val_loss = curr_metrics['loss'] / epoch_samples
   
-    val_jaccard = curr_metrics['jaccard'] / sample
+    val_jaccard = curr_metrics['jaccard'] / epoch_samples
     val_precision = curr_metrics['precision'] / sample
     val_recall = curr_metrics['recall'] / sample
 
@@ -447,7 +467,7 @@ if __name__ == "__main__":
     #config_vt = CONFIGS["R50-ViT-B_16"]
     #model = VisionTransformer(config_vt, img_size=256,num_classes=1,deep_supervision=False)
   
-    model = UTNetV2(5,1)
+    model = AA_UNet(pretrained=True,fpa_block=True,respaths=True,mhca=True)
     print(DEVICE)
 
     # change this when u change model

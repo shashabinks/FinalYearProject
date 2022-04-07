@@ -108,12 +108,12 @@ def save_predictions_as_imgs(loader, model, device="cuda"):
 
             #save_image(y,f'im_name.png')
             # apply threshold, so all values are either 1 or 0 then apply other stuff
-            preds = preds * 255
-            preds = preds.to(torch.uint8)
+            #preds = preds * 255
+            #preds = preds.to(torch.uint8)
 
-            y = y * 255
-            y = y.to(torch.uint8)
-            y = y * 255
+            #y = y * 255
+            #y = y.to(torch.uint8)
+            #y = y * 255
             
             #print(torch.max(y))
             
@@ -135,8 +135,8 @@ def save_predictions_as_imgs(loader, model, device="cuda"):
 
         
 
-            pred_img.save(f"pred_{idx}.jpeg")
-            gt_img.save(f"gt_{idx}.jpeg")
+            #pred_img.save(f"pred_{idx}.jpeg")
+            #gt_img.save(f"gt_{idx}.jpeg")
 
             
             
