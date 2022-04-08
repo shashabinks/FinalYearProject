@@ -37,12 +37,12 @@ from models.sa_unet import SAUNet_2D
 from models.resUnet import SResUnet
 #from models.RPDnet import RPDNet
 """
-#from models.aa_transunet.vit_seg_modeling import VisionTransformer
-#from models.aa_transunet.vit_seg_modeling import CONFIGS
+from models.aa_transunet.vit_seg_modeling import VisionTransformer
+from models.aa_transunet.vit_seg_modeling import CONFIGS
 """
 from models.final_net import RPDNet
 """
-from models.aa_unet import AA_UNet
+#from models.aa_unet import AA_UNet
 #from models.levit import Build_LeViT_UNet_128s
 #from models.utnetv2 import UTNetV2
 
@@ -462,12 +462,12 @@ if __name__ == "__main__":
     #model = UNet_2D(in_channels=1,fpa_block=True, sa=False,deep_supervision=DEEP_SUPERVISION, mhca=False) # make sure to change the number of channels in the unet model file
     
     
-   # model = AA_UNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
+    #model = AA_UNet(pretrained=True,freeze=False,fpa_block=True,respaths=True,mhca=True)
     #model = Build_LeViT_UNet_128s(num_classes=1,pretrained=True)
-    #config_vt = CONFIGS["R50-ViT-B_16"]
-    #model = VisionTransformer(config_vt, img_size=256,num_classes=1,deep_supervision=False)
+    config_vt = CONFIGS["R50-ViT-B_16"]
+    model = VisionTransformer(config_vt, img_size=256,num_classes=1,deep_supervision=False)
   
-    model = AA_UNet(pretrained=True,fpa_block=True,respaths=True,mhca=True)
+    #model = AA_UNet(pretrained=True,fpa_block=True,respaths=True,mhca=True)
     print(DEVICE)
 
     # change this when u change model
@@ -506,7 +506,7 @@ if __name__ == "__main__":
 
 
     optimizer = optim.Adam(model.parameters(), LEARNING_RATE)
-    scheduler = StepLR(optimizer, step_size=200, gamma=0.0001)
+    scheduler = StepLR(optimizer, step_size=80, gamma=0.01)
 
     train_model(model, (train_dl, valid_dl),optimizer,NUM_EPOCHS,scheduler=scheduler)
 

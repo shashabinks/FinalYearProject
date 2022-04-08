@@ -16,8 +16,8 @@ import numpy as np
 from torch.nn import CrossEntropyLoss, Dropout, Softmax, Linear, Conv2d, LayerNorm
 from torch.nn.modules.utils import _pair
 from scipy import ndimage
-import vit_seg_configs as configs
-from vit_seg_modeling_resnet_skip import ResNetV2
+from . import vit_seg_configs as configs
+from .vit_seg_modeling_resnet_skip import ResNetV2
 
 
 logger = logging.getLogger(__name__)
@@ -411,12 +411,13 @@ class DecoderCup(nn.Module):
             else:
                 skip = None
 
-            if skip is not None:
+            # enable for skip connection stuff
+            #if skip is not None:
                 #print(x.shape, skip.shape)
 
                 # apply cbam to skip connections
-                cbam = self.cbam_layers[i]
-                skip = cbam(skip)
+                #cbam = self.cbam_layers[i]
+                #skip = cbam(skip)
 
 
             # so x is the output of each decoding layer, so the last layer will just be the standard output segmentation
