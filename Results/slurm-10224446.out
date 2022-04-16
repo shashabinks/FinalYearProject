@@ -1,0 +1,10 @@
+U-NET
+Fold 0
+Loaded Training Data...
+Loaded Validation Data...
+1704
+76
+Traceback (most recent call last):
+  File "train_cv.py", line 470, in <module>
+    model = UNet_2D(img_ch=5,output_ch=1)
+TypeError: __init__() got an unexpected keyword argument 'img_ch'

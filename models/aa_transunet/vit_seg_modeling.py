@@ -412,12 +412,12 @@ class DecoderCup(nn.Module):
                 skip = None
 
             # enable for skip connection stuff
-            #if skip is not None:
+            if skip is not None:
                 #print(x.shape, skip.shape)
 
                 # apply cbam to skip connections
-                #cbam = self.cbam_layers[i]
-                #skip = cbam(skip)
+                cbam = self.cbam_layers[i]
+                skip = cbam(skip)
 
 
             # so x is the output of each decoding layer, so the last layer will just be the standard output segmentation
