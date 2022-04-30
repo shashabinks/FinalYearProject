@@ -256,9 +256,7 @@ def load_data(file_dir):
     case_num = 1
     for case_name in os.listdir(file_dir):
 
-        # some how get the case number and compare that to patient id lookup table
-        # then, for each case, we append the images to a list and append the resulting case list to a list under the patient id in a dictionary   
-        # so the result is patients = {patient_1 : [[case_1_images], [case_2_images]], etc}  
+         
         patient_id = lookup.patients_train[case_num]
 
         case_path = os.path.join(file_dir, case_name)
