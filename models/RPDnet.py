@@ -420,6 +420,8 @@ class RPDNet(nn.Module):
         self.deep_supervision = deep_supervision
         self.respath = respaths
         
+        # combine 5 channel input into a 3 channel
+        self.init = nn.Sequential(nn.BatchNorm2d(5),nn.Conv2d(5,3,1,1))
 
         # define extra modules
 
@@ -431,10 +433,8 @@ class RPDNet(nn.Module):
         self.fpa = MHSABlock(4,512)
     
         self.encoder_layers = list(self.encoder.children())
-        self.encoder.conv1 = nn.Conv2d(5, 64, kernel_size=7, stride=2, padding=3, bias=False)
-        self.conv1 = self.encoder.conv1
-
-        self.block1 = nn.Sequential(*self.encoder_layers[1:3])
+        
+        self.block1 = nn.Sequential(*self.encoder_layers[:3])
         self.block2 = nn.Sequential(*self.encoder_layers[3:5])
         self.block3 = self.encoder_layers[5]
         self.block4 = self.encoder_layers[6]
@@ -481,7 +481,7 @@ class RPDNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
     def forward(self, x):
-        x = self.conv1(x)
+        x = self.init(x)
         block1 = self.block1(x)
         block2 = self.block2(block1)
         block3 = self.block3(block2)
